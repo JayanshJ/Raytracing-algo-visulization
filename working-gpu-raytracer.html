@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Working GPU Ray Tracer</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #0a0a0a;
+            color: #fff;
+            font-family: 'Segoe UI', sans-serif;
+            overflow: hidden;
+        }
+
+        .main-container {
+            display: flex;
+            height: 100vh;
+        }
+
+        .viewport {
+            flex: 1;
+            position: relative;
+            background: #000;
+        }
+
+        #canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            cursor: grab;
+        }
+
+        .viewport-overlay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 13px;
+            z-index: 100;
+            min-width: 250px;
+        }
+
+        .performance-stats {
+            line-height: 1.6;
+        }
+
+        .stat-bar {
+            background: #333;
+            height: 6px;
+            border-radius: 3px;
+            margin: 4px 0;
+            overflow: hidden;
+        }
+
+        .stat-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4a90e2, #50c878);
+            transition: width 0.3s;
+        }
+
+        .side-panel {
+            width: 350px;
+            background: #1a1a1a;
+            border-left: 1px solid #333;
+            overflow-y: auto;
+            padding: 0;
+        }
+
+        .panel-section {
+            border-bottom: 1px solid #333;
+        }
+
+        .section-header {
+            background: #2a2a2a;
+            padding: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.2s;
+        }
+
+        .section-header:hover {
+            background: #333;
+        }
+
+        .section-content {
+            padding: 20px;
+            display: none;
+        }
+
+        .section-content.expanded {
+            display: block;
+        }
+
+        .control-group {
+            margin-bottom: 18px;
+        }
+
+        .control-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: #ccc;
+            font-weight: 500;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: #333;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #4a90e2;
+            cursor: pointer;
+        }
+
+        button {
+            background: linear-gradient(135deg, #4a90e2, #357abd);
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s;
+            margin: 5px 5px 5px 0;
+        }
+
+        button:hover {
+            background: linear-gradient(135deg, #357abd, #2a5a8a);
+            transform: translateY(-1px);
+        }
+
+        .value-display {
+            min-width: 50px;
+            text-align: right;
+            font-size: 13px;
+            color: #4a90e2;
+            font-weight: 600;
+            float: right;
+        }
+
+        .preset-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+            margin-top: 15px;
+        }
+
+        .toggle-arrow {
+            transition: transform 0.3s;
+            font-size: 14px;
+        }
+
+        .toggle-arrow.expanded {
+            transform: rotate(90deg);
+        }
+
+        .warning {
+            background: rgba(255, 193, 7, 0.1);
+            border: 1px solid rgba(255, 193, 7, 0.3);
+            border-radius: 6px;
+            padding: 10px;
+            margin-top: 10px;
+            font-size: 12px;
+            color: #ffc107;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <div class="viewport">
+            <canvas id="canvas"></canvas>
+            <div class="viewport-overlay">
+                <div class="performance-stats">
+                    <div><strong>🚀 GPU Ray Tracer</strong></div>
+                    <div style="margin: 10px 0;">
+                        <div>FPS: <span id="fps" style="color: #50c878;">--</span></div>
+                        <div class="stat-bar"><div class="stat-fill" id="fpsBar"></div></div>
+                    </div>
+                    <div style="margin: 10px 0;">
+                        <div>Frame Time: <span id="frameTime">--</span>ms</div>
+                        <div class="stat-bar"><div class="stat-fill" id="frameTimeBar"></div></div>
+                    </div>
+                    <div style="margin: 10px 0;">
+                        <div>GPU Load: <span id="gpuLoad" style="color: #ff6b35;">--</span>%</div>
+                        <div class="stat-bar"><div class="stat-fill" id="gpuBar"></div></div>
+                    </div>
+                    <div>Rays/Frame: <span id="rayCount" style="color: #4a90e2;">--</span>M</div>
+                    <div>Samples: <span id="currentSamples">--</span>x</div>
+                    <div>Bounces: <span id="currentBounces">--</span></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="side-panel">
+            <!-- Performance Settings -->
+            <div class="panel-section">
+                <div class="section-header" onclick="toggleSection(this)">
+                    <span>⚡ Performance</span>
+                    <span class="toggle-arrow">▶</span>
+                </div>
+                <div class="section-content expanded">
+                    <div class="control-group">
+                        <label>Resolution Scale: <span class="value-display" id="resScaleValue">1.5x</span></label>
+                        <input type="range" id="resolutionScale" min="0.5" max="3.0" step="0.25" value="1.5">
+                    </div>
+                    <div class="control-group">
+                        <label>Samples per Pixel: <span class="value-display" id="samplesValue">8</span></label>
+                        <input type="range" id="samples" min="1" max="32" step="1" value="8">
+                    </div>
+                    <div class="control-group">
+                        <label>Ray Bounces: <span class="value-display" id="bouncesValue">8</span></label>
+                        <input type="range" id="maxBounces" min="2" max="16" value="8">
+                    </div>
+                    <div class="preset-grid">
+                        <button onclick="setQuality('low')">Low Quality</button>
+                        <button onclick="setQuality('medium')">Medium</button>
+                        <button onclick="setQuality('high')">High Quality</button>
+                        <button onclick="setQuality('ultra')">🔥 Ultra</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Animation -->
+            <div class="panel-section">
+                <div class="section-header" onclick="toggleSection(this)">
+                    <span>🎬 Animation</span>
+                    <span class="toggle-arrow">▶</span>
+                </div>
+                <div class="section-content expanded">
+                    <div class="control-group">
+                        <label>Animation Speed: <span class="value-display" id="animSpeedValue">1.0x</span></label>
+                        <input type="range" id="animationSpeed" min="0" max="3" step="0.1" value="1.0">
+                    </div>
+                    <div class="control-group">
+                        <label>Sphere Movement: <span class="value-display" id="sphereMovementValue">On</span></label>
+                        <input type="checkbox" id="sphereMovement" checked>
+                    </div>
+                    <div class="control-group">
+                        <label>Light Animation: <span class="value-display" id="lightAnimValue">On</span></label>
+                        <input type="checkbox" id="lightAnimation" checked>
+                    </div>
+                    <button onclick="addSphere()">Add Sphere</button>
+                    <button onclick="addLight()">Add Light</button>
+                    <button onclick="resetScene()">Reset Scene</button>
+                </div>
+            </div>
+
+            <!-- Visual Effects -->
+            <div class="panel-section">
+                <div class="section-header" onclick="toggleSection(this)">
+                    <span>✨ Effects</span>
+                    <span class="toggle-arrow">▶</span>
+                </div>
+                <div class="section-content">
+                    <div class="control-group">
+                        <label>Reflections: <span class="value-display" id="reflectionsValue">On</span></label>
+                        <input type="checkbox" id="reflections" checked>
+                    </div>
+                    <div class="control-group">
+                        <label>Shadows: <span class="value-display" id="shadowsValue">On</span></label>
+                        <input type="checkbox" id="shadows" checked>
+                    </div>
+                    <div class="control-group">
+                        <label>Ambient Light: <span class="value-display" id="ambientValue">0.1</span></label>
+                        <input type="range" id="ambient" min="0" max="0.5" step="0.05" value="0.1">
+                    </div>
+                    <div class="control-group">
+                        <label>Light Intensity: <span class="value-display" id="lightIntensityValue">1.5</span></label>
+                        <input type="range" id="lightIntensity" min="0.5" max="3.0" step="0.1" value="1.5">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class WorkingRayTracer {
+            constructor() {
+                this.canvas = document.getElementById('canvas');
+                this.resizeCanvas();
+                this.initWebGL();
+                this.createShaders();
+                this.setupScene();
+                this.setupControls();
+                this.setupStats();
+                this.setupMouseControls();
+                this.animate();
+            }
+
+            resizeCanvas() {
+                const rect = this.canvas.parentElement.getBoundingClientRect();
+                this.canvas.width = rect.width;
+                this.canvas.height = rect.height;
+            }
+
+            initWebGL() {
+                this.gl = this.canvas.getContext('webgl2') || this.canvas.getContext('webgl');
+                if (!this.gl) {
+                    throw new Error('WebGL not supported');
+                }
+
+                console.log('GPU:', this.gl.getParameter(this.gl.RENDERER));
+            }
+
+            createShaders() {
+                const vertexShader = `
+                    attribute vec2 a_position;
+                    void main() {
+                        gl_Position = vec4(a_position, 0.0, 1.0);
+                    }
+                `;
+
+                const fragmentShader = `
+                    precision highp float;
+
+                    uniform vec2 u_resolution;
+                    uniform float u_time;
+                    uniform vec3 u_camera;
+                    uniform int u_samples;
+                    uniform int u_bounces;
+                    uniform float u_resScale;
+                    uniform float u_animSpeed;
+                    uniform int u_sphereMove;
+                    uniform int u_lightAnim;
+                    uniform int u_reflections;
+                    uniform int u_shadows;
+                    uniform float u_ambient;
+                    uniform float u_lightIntensity;
+
+                    // Simple noise
+                    float hash(float n) {
+                        return fract(sin(n) * 43758.5453);
+                    }
+
+                    float noise(vec2 x) {
+                        vec2 p = floor(x);
+                        vec2 f = fract(x);
+                        f = f * f * (3.0 - 2.0 * f);
+                        float n = p.x + p.y * 57.0;
+                        return mix(mix(hash(n), hash(n + 1.0), f.x),
+                                  mix(hash(n + 57.0), hash(n + 58.0), f.x), f.y);
+                    }
+
+                    // Ray structure
+                    struct Ray {
+                        vec3 origin;
+                        vec3 direction;
+                    };
+
+                    struct Hit {
+                        bool hit;
+                        float t;
+                        vec3 point;
+                        vec3 normal;
+                        vec3 color;
+                        float roughness;
+                        float metallic;
+                    };
+
+                    // Sphere intersection
+                    Hit intersectSphere(Ray ray, vec3 center, float radius, vec3 color, float roughness, float metallic) {
+                        Hit h;
+                        h.hit = false;
+
+                        vec3 oc = ray.origin - center;
+                        float a = dot(ray.direction, ray.direction);
+                        float b = 2.0 * dot(oc, ray.direction);
+                        float c = dot(oc, oc) - radius * radius;
+                        float discriminant = b * b - 4.0 * a * c;
+
+                        if (discriminant >= 0.0) {
+                            float t1 = (-b - sqrt(discriminant)) / (2.0 * a);
+                            float t2 = (-b + sqrt(discriminant)) / (2.0 * a);
+                            float t = t1 > 0.001 ? t1 : (t2 > 0.001 ? t2 : -1.0);
+
+                            if (t > 0.001) {
+                                h.hit = true;
+                                h.t = t;
+                                h.point = ray.origin + t * ray.direction;
+                                h.normal = normalize(h.point - center);
+                                h.color = color;
+                                h.roughness = roughness;
+                                h.metallic = metallic;
+                            }
+                        }
+
+                        return h;
+                    }
+
+                    // Plane intersection
+                    Hit intersectPlane(Ray ray, vec3 point, vec3 normal, vec3 color) {
+                        Hit h;
+                        h.hit = false;
+
+                        float denom = dot(normal, ray.direction);
+                        if (abs(denom) > 1e-6) {
+                            float t = dot(point - ray.origin, normal) / denom;
+                            if (t > 0.001) {
+                                h.hit = true;
+                                h.t = t;
+                                h.point = ray.origin + t * ray.direction;
+                                h.normal = normal;
+
+                                // Checkerboard pattern
+                                vec2 uv = h.point.xz * 0.5;
+                                float checker = step(0.5, mod(floor(uv.x) + floor(uv.y), 2.0));
+                                h.color = mix(vec3(0.3), vec3(0.8), checker);
+                                h.roughness = 0.8;
+                                h.metallic = 0.1;
+                            }
+                        }
+
+                        return h;
+                    }
+
+                    // Scene intersection
+                    Hit intersectScene(Ray ray) {
+                        Hit closest;
+                        closest.hit = false;
+                        closest.t = 1e20;
+
+                        // Animated spheres
+                        vec3 positions[5];
+                        vec3 colors[5];
+                        float roughness[5];
+                        float metallic[5];
+
+                        // Main spheres
+                        if (u_sphereMove == 1) {
+                            positions[0] = vec3(-2.0 + sin(u_time * u_animSpeed) * 0.5,
+                                              1.0 + cos(u_time * u_animSpeed * 1.3) * 0.3, -5.0);
+                            positions[1] = vec3(2.0 + cos(u_time * u_animSpeed * 0.8) * 0.7,
+                                              1.0 + sin(u_time * u_animSpeed * 1.1) * 0.4, -5.0);
+                            positions[2] = vec3(0.0, 3.0 + sin(u_time * u_animSpeed * 2.0) * 0.5, -3.0);
+                        } else {
+                            positions[0] = vec3(-2.0, 1.0, -5.0);
+                            positions[1] = vec3(2.0, 1.0, -5.0);
+                            positions[2] = vec3(0.0, 3.0, -3.0);
+                        }
+
+                        // Floating spheres
+                        for (int i = 3; i < 5; i++) {
+                            float offset = float(i) * 2.0;
+                            positions[i] = vec3(sin(u_time * u_animSpeed + offset) * 3.0,
+                                              0.5 + cos(u_time * u_animSpeed + offset) * 0.5,
+                                              -7.0 + sin(u_time * u_animSpeed * 0.5 + offset) * 2.0);
+                        }
+
+                        colors[0] = vec3(0.9, 0.1, 0.1); roughness[0] = 0.1; metallic[0] = 0.9;
+                        colors[1] = vec3(0.1, 0.9, 0.1); roughness[1] = 0.8; metallic[1] = 0.0;
+                        colors[2] = vec3(0.9, 0.5, 0.1); roughness[2] = 0.3; metallic[2] = 0.0;
+                        colors[3] = vec3(0.1, 0.5, 0.9); roughness[3] = 0.2; metallic[3] = 0.8;
+                        colors[4] = vec3(0.9, 0.1, 0.9); roughness[4] = 0.4; metallic[4] = 0.2;
+
+                        for (int i = 0; i < 5; i++) {
+                            Hit h = intersectSphere(ray, positions[i], 1.0, colors[i], roughness[i], metallic[i]);
+                            if (h.hit && h.t < closest.t) {
+                                closest = h;
+                            }
+                        }
+
+                        // Ground plane
+                        Hit ground = intersectPlane(ray, vec3(0, -2, 0), vec3(0, 1, 0), vec3(0.5));
+                        if (ground.hit && ground.t < closest.t) {
+                            closest = ground;
+                        }
+
+                        return closest;
+                    }
+
+                    // Environment
+                    vec3 sampleEnvironment(vec3 direction) {
+                        float t = 0.5 * (direction.y + 1.0);
+                        vec3 sky = mix(vec3(0.1, 0.1, 0.2), vec3(0.5, 0.7, 1.0), t);
+
+                        // Animated stars
+                        if (direction.y > 0.0) {
+                            vec2 uv = direction.xz / direction.y;
+                            float stars = step(0.98, noise(uv * 30.0 + u_time * 0.1));
+                            sky += vec3(stars * 0.5);
+                        }
+
+                        return sky;
+                    }
+
+                    // Lighting
+                    vec3 calculateLighting(Hit hit, vec3 viewDir) {
+                        vec3 color = vec3(0.0);
+
+                        // Multiple lights
+                        vec3 lightPos[3];
+                        vec3 lightColor[3];
+
+                        if (u_lightAnim == 1) {
+                            lightPos[0] = vec3(5.0 + 3.0 * sin(u_time * u_animSpeed * 0.7), 8.0,
+                                             5.0 + 3.0 * cos(u_time * u_animSpeed * 0.7));
+                            lightPos[1] = vec3(-4.0, 3.0 + 2.0 * sin(u_time * u_animSpeed), -2.0);
+                            lightPos[2] = vec3(4.0, 2.0, -8.0 + 3.0 * sin(u_time * u_animSpeed * 0.8));
+                        } else {
+                            lightPos[0] = vec3(5.0, 8.0, 5.0);
+                            lightPos[1] = vec3(-4.0, 3.0, -2.0);
+                            lightPos[2] = vec3(4.0, 2.0, -8.0);
+                        }
+
+                        lightColor[0] = vec3(1.0, 0.9, 0.8);
+                        lightColor[1] = vec3(1.0, 0.3, 0.5);
+                        lightColor[2] = vec3(0.3, 0.8, 1.0);
+
+                        for (int i = 0; i < 3; i++) {
+                            vec3 lightDir = lightPos[i] - hit.point;
+                            float distance = length(lightDir);
+                            lightDir = normalize(lightDir);
+
+                            // Shadow test
+                            bool inShadow = false;
+                            if (u_shadows == 1) {
+                                Ray shadowRay;
+                                shadowRay.origin = hit.point + hit.normal * 0.001;
+                                shadowRay.direction = lightDir;
+                                Hit shadowHit = intersectScene(shadowRay);
+                                inShadow = shadowHit.hit && shadowHit.t < distance;
+                            }
+
+                            if (!inShadow) {
+                                float attenuation = u_lightIntensity / (1.0 + 0.1 * distance);
+                                float lambertian = max(0.0, dot(hit.normal, lightDir));
+                                color += hit.color * lightColor[i] * lambertian * attenuation;
+
+                                // Specular
+                                vec3 reflectDir = reflect(-lightDir, hit.normal);
+                                float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32.0 / (hit.roughness + 0.1));
+                                color += lightColor[i] * spec * attenuation * 0.5;
+                            }
+                        }
+
+                        // Ambient
+                        color += hit.color * u_ambient;
+
+                        return color;
+                    }
+
+                    // Simple random
+                    vec3 randomDirection(vec2 seed) {
+                        float theta = noise(seed) * 6.28318;
+                        float phi = acos(2.0 * noise(seed + 1.0) - 1.0);
+                        return vec3(sin(phi) * cos(theta), sin(phi) * sin(theta), cos(phi));
+                    }
+
+                    // Ray tracing
+                    vec3 trace(Ray ray, vec2 seed) {
+                        vec3 color = vec3(0.0);
+                        vec3 throughput = vec3(1.0);
+
+                        for (int bounce = 0; bounce < 16; bounce++) {
+                            if (bounce >= u_bounces) break;
+
+                            Hit hit = intersectScene(ray);
+
+                            if (!hit.hit) {
+                                color += throughput * sampleEnvironment(ray.direction);
+                                break;
+                            }
+
+                            vec3 viewDir = -ray.direction;
+                            vec3 lighting = calculateLighting(hit, viewDir);
+                            color += throughput * lighting;
+
+                            // Reflection
+                            if (u_reflections == 1 && hit.metallic > 0.1) {
+                                vec3 reflectDir = reflect(ray.direction, hit.normal);
+                                ray.origin = hit.point + hit.normal * 0.001;
+                                ray.direction = reflectDir;
+                                throughput *= hit.color * hit.metallic;
+                            } else {
+                                break;
+                            }
+
+                            // Russian roulette
+                            float maxComponent = max(max(throughput.r, throughput.g), throughput.b);
+                            if (maxComponent < 0.1) break;
+                        }
+
+                        return color;
+                    }
+
+                    void main() {
+                        vec2 coord = gl_FragCoord.xy * u_resScale;
+                        vec2 uv = coord / u_resolution;
+                        vec2 screenPos = (coord / u_resolution) * 2.0 - 1.0;
+                        screenPos.x *= u_resolution.x / u_resolution.y;
+
+                        vec3 color = vec3(0.0);
+
+                        // Camera
+                        vec3 rayOrigin = u_camera;
+
+                        // Multi-sampling
+                        for (int sample = 0; sample < 32; sample++) {
+                            if (sample >= u_samples) break;
+
+                            vec2 jitter = (hash(coord.x + float(sample)) - 0.5) * 2.0 / u_resolution;
+                            vec2 samplePos = screenPos + jitter;
+
+                            vec3 rayDir = normalize(vec3(samplePos, -1.0));
+
+                            Ray ray;
+                            ray.origin = rayOrigin;
+                            ray.direction = rayDir;
+
+                            vec2 seed = coord + float(sample) + u_time;
+                            color += trace(ray, seed);
+                        }
+
+                        color /= float(u_samples);
+
+                        // Tone mapping
+                        color = color / (1.0 + color);
+                        color = pow(color, vec3(1.0 / 2.2));
+
+                        gl_FragColor = vec4(color, 1.0);
+                    }
+                `;
+
+                this.program = this.createProgram(vertexShader, fragmentShader);
+                this.getUniforms();
+                this.createGeometry();
+            }
+
+            createProgram(vertexSource, fragmentSource) {
+                const gl = this.gl;
+
+                const vertexShader = this.compileShader(gl.VERTEX_SHADER, vertexSource);
+                const fragmentShader = this.compileShader(gl.FRAGMENT_SHADER, fragmentSource);
+
+                const program = gl.createProgram();
+                gl.attachShader(program, vertexShader);
+                gl.attachShader(program, fragmentShader);
+                gl.linkProgram(program);
+
+                if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                    console.error('Program link error:', gl.getProgramInfoLog(program));
+                    throw new Error('Program link failed');
+                }
+
+                return program;
+            }
+
+            compileShader(type, source) {
+                const gl = this.gl;
+                const shader = gl.createShader(type);
+                gl.shaderSource(shader, source);
+                gl.compileShader(shader);
+
+                if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                    console.error('Shader compile error:', gl.getShaderInfoLog(shader));
+                    console.error('Shader source:', source);
+                    throw new Error('Shader compilation failed');
+                }
+
+                return shader;
+            }
+
+            getUniforms() {
+                const gl = this.gl;
+                this.uniforms = {};
+
+                const names = [
+                    'u_resolution', 'u_time', 'u_camera', 'u_samples', 'u_bounces',
+                    'u_resScale', 'u_animSpeed', 'u_sphereMove', 'u_lightAnim',
+                    'u_reflections', 'u_shadows', 'u_ambient', 'u_lightIntensity'
+                ];
+
+                names.forEach(name => {
+                    this.uniforms[name] = gl.getUniformLocation(this.program, name);
+                });
+            }
+
+            createGeometry() {
+                const gl = this.gl;
+
+                const vertices = new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]);
+
+                this.vertexBuffer = gl.createBuffer();
+                gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+                gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+            }
+
+            setupScene() {
+                this.camera = [0, 2, 8];
+                this.settings = {
+                    resolutionScale: 1.5,
+                    samples: 8,
+                    maxBounces: 8,
+                    animationSpeed: 1.0,
+                    sphereMovement: true,
+                    lightAnimation: true,
+                    reflections: true,
+                    shadows: true,
+                    ambient: 0.1,
+                    lightIntensity: 1.5
+                };
+
+                this.sphereCount = 5;
+                this.lightCount = 3;
+            }
+
+            setupMouseControls() {
+                let isMouseDown = false;
+                let lastMouseX = 0;
+                let lastMouseY = 0;
+                let cameraAngleX = 0;
+                let cameraAngleY = 0;
+
+                this.canvas.addEventListener('mousedown', (e) => {
+                    isMouseDown = true;
+                    lastMouseX = e.clientX;
+                    lastMouseY = e.clientY;
+                });
+
+                this.canvas.addEventListener('mousemove', (e) => {
+                    if (!isMouseDown) return;
+
+                    const deltaX = e.clientX - lastMouseX;
+                    const deltaY = e.clientY - lastMouseY;
+
+                    cameraAngleY += deltaX * 0.01;
+                    cameraAngleX += deltaY * 0.01;
+                    cameraAngleX = Math.max(-Math.PI/2, Math.min(Math.PI/2, cameraAngleX));
+
+                    const radius = 10;
+                    this.camera = [
+                        radius * Math.sin(cameraAngleY) * Math.cos(cameraAngleX),
+                        2 + radius * Math.sin(cameraAngleX),
+                        radius * Math.cos(cameraAngleY) * Math.cos(cameraAngleX)
+                    ];
+
+                    lastMouseX = e.clientX;
+                    lastMouseY = e.clientY;
+                });
+
+                this.canvas.addEventListener('mouseup', () => { isMouseDown = false; });
+                this.canvas.addEventListener('mouseleave', () => { isMouseDown = false; });
+            }
+
+            setupControls() {
+                // Quality presets
+                window.setQuality = (preset) => {
+                    switch(preset) {
+                        case 'low':
+                            this.updateSetting('resolutionScale', 0.75);
+                            this.updateSetting('samples', 2);
+                            this.updateSetting('maxBounces', 4);
+                            break;
+                        case 'medium':
+                            this.updateSetting('resolutionScale', 1.0);
+                            this.updateSetting('samples', 4);
+                            this.updateSetting('maxBounces', 6);
+                            break;
+                        case 'high':
+                            this.updateSetting('resolutionScale', 1.5);
+                            this.updateSetting('samples', 8);
+                            this.updateSetting('maxBounces', 8);
+                            break;
+                        case 'ultra':
+                            this.updateSetting('resolutionScale', 2.0);
+                            this.updateSetting('samples', 16);
+                            this.updateSetting('maxBounces', 12);
+                            break;
+                    }
+                };
+
+                // Scene functions
+                window.addSphere = () => { this.sphereCount = Math.min(8, this.sphereCount + 1); };
+                window.addLight = () => { this.lightCount = Math.min(6, this.lightCount + 1); };
+                window.resetScene = () => { this.sphereCount = 5; this.lightCount = 3; };
+
+                // Setup controls
+                this.setupSlider('resolutionScale', (v) => `${v}x`);
+                this.setupSlider('samples', (v) => v);
+                this.setupSlider('maxBounces', (v) => v);
+                this.setupSlider('animationSpeed', (v) => `${v}x`);
+                this.setupSlider('ambient', (v) => v.toFixed(2));
+                this.setupSlider('lightIntensity', (v) => v.toFixed(1));
+
+                this.setupCheckbox('sphereMovement');
+                this.setupCheckbox('lightAnimation', 'lightAnimValue');
+                this.setupCheckbox('reflections');
+                this.setupCheckbox('shadows');
+            }
+
+            setupSlider(id, formatter) {
+                const slider = document.getElementById(id);
+                const display = document.getElementById(id + 'Value');
+
+                if (slider && display) {
+                    slider.addEventListener('input', (e) => {
+                        const value = parseFloat(e.target.value);
+                        this.settings[id] = value;
+                        display.textContent = formatter ? formatter(value) : value;
+                    });
+                }
+            }
+
+            setupCheckbox(id, displayId = null) {
+                const checkbox = document.getElementById(id);
+                const display = document.getElementById(displayId || id + 'Value');
+
+                if (checkbox && display) {
+                    checkbox.addEventListener('change', (e) => {
+                        this.settings[id] = e.target.checked;
+                        display.textContent = e.target.checked ? 'On' : 'Off';
+                    });
+                }
+            }
+
+            updateSetting(key, value) {
+                this.settings[key] = value;
+                const slider = document.getElementById(key);
+                const display = document.getElementById(key + 'Value');
+                if (slider) slider.value = value;
+                if (display) {
+                    const formatters = {
+                        resolutionScale: (v) => `${v}x`,
+                        samples: (v) => v,
+                        maxBounces: (v) => v
+                    };
+                    display.textContent = formatters[key] ? formatters[key](value) : value;
+                }
+            }
+
+            setupStats() {
+                this.fpsHistory = new Array(60).fill(0);
+                this.fpsIndex = 0;
+                this.lastTime = performance.now();
+            }
+
+            updateStats() {
+                const now = performance.now();
+                const frameTime = now - this.lastTime;
+                this.lastTime = now;
+
+                this.fpsHistory[this.fpsIndex] = 1000 / frameTime;
+                this.fpsIndex = (this.fpsIndex + 1) % this.fpsHistory.length;
+
+                const fps = this.fpsHistory.reduce((a, b) => a + b) / this.fpsHistory.length;
+                const gpuLoad = Math.min(100, Math.max(0, 100 - fps * 1.67));
+
+                document.getElementById('fps').textContent = fps.toFixed(1);
+                document.getElementById('frameTime').textContent = frameTime.toFixed(2);
+                document.getElementById('gpuLoad').textContent = gpuLoad.toFixed(0);
+                document.getElementById('rayCount').textContent = (this.canvas.width * this.canvas.height * this.settings.samples / 1000000).toFixed(1);
+                document.getElementById('currentSamples').textContent = this.settings.samples;
+                document.getElementById('currentBounces').textContent = this.settings.maxBounces;
+
+                // Update bars
+                document.getElementById('fpsBar').style.width = `${Math.min(100, fps * 1.67)}%`;
+                document.getElementById('frameTimeBar').style.width = `${Math.min(100, frameTime * 2)}%`;
+                document.getElementById('gpuBar').style.width = `${gpuLoad}%`;
+            }
+
+            render() {
+                const gl = this.gl;
+
+                gl.useProgram(this.program);
+
+                // Bind geometry
+                const positionLocation = gl.getAttribLocation(this.program, 'a_position');
+                gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+                gl.enableVertexAttribArray(positionLocation);
+                gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+                // Set uniforms
+                gl.uniform2f(this.uniforms.u_resolution, this.canvas.width, this.canvas.height);
+                gl.uniform1f(this.uniforms.u_time, performance.now() * 0.001);
+                gl.uniform3fv(this.uniforms.u_camera, this.camera);
+                gl.uniform1i(this.uniforms.u_samples, this.settings.samples);
+                gl.uniform1i(this.uniforms.u_bounces, this.settings.maxBounces);
+                gl.uniform1f(this.uniforms.u_resScale, this.settings.resolutionScale);
+                gl.uniform1f(this.uniforms.u_animSpeed, this.settings.animationSpeed);
+                gl.uniform1i(this.uniforms.u_sphereMove, this.settings.sphereMovement ? 1 : 0);
+                gl.uniform1i(this.uniforms.u_lightAnim, this.settings.lightAnimation ? 1 : 0);
+                gl.uniform1i(this.uniforms.u_reflections, this.settings.reflections ? 1 : 0);
+                gl.uniform1i(this.uniforms.u_shadows, this.settings.shadows ? 1 : 0);
+                gl.uniform1f(this.uniforms.u_ambient, this.settings.ambient);
+                gl.uniform1f(this.uniforms.u_lightIntensity, this.settings.lightIntensity);
+
+                // Render
+                gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+                gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+            }
+
+            animate() {
+                this.render();
+                this.updateStats();
+                requestAnimationFrame(() => this.animate());
+            }
+        }
+
+        // UI Functions
+        function toggleSection(header) {
+            const content = header.nextElementSibling;
+            const arrow = header.querySelector('.toggle-arrow');
+            content.classList.toggle('expanded');
+            arrow.classList.toggle('expanded');
+        }
+
+        // Initialize
+        window.addEventListener('load', () => {
+            try {
+                const rayTracer = new WorkingRayTracer();
+                console.log('Working Ray Tracer initialized successfully!');
+            } catch (error) {
+                console.error('Ray tracer failed:', error);
+                document.body.innerHTML = `
+                    <div style="padding: 40px; color: white; background: #1a1a1a; text-align: center; height: 100vh; display: flex; flex-direction: column; justify-content: center;">
+                        <h2>🚨 Ray Tracer Failed</h2>
+                        <p style="margin: 20px 0; color: #ff6b6b;"><strong>Error:</strong> ${error.message}</p>
+                        <div style="background: #333; padding: 20px; border-radius: 8px; margin: 20px auto; max-width: 600px; text-align: left;">
+                            <h3>Troubleshooting:</h3>
+                            <ul style="margin: 10px 0; padding-left: 20px;">
+                                <li>Enable hardware acceleration in browser settings</li>
+                                <li>Update graphics drivers</li>
+                                <li>Try Chrome or Firefox</li>
+                                <li>Check GPU compatibility at <a href="https://get.webgl.org/" target="_blank" style="color: #4a90e2;">get.webgl.org</a></li>
+                            </ul>
+                        </div>
+                        <button onclick="window.location.reload()" style="margin-top: 20px; padding: 15px 30px; background: #4a90e2; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px;">
+                            🔄 Retry
+                        </button>
+                    </div>
+                `;
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Ray Tracer</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #1a1a1a;
+            color: white;
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        canvas {
+            border: 1px solid #555;
+            background: black;
+        }
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .control {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        input[type="range"] {
+            margin-top: 5px;
+        }
+        button {
+            margin-top: 10px;
+            padding: 10px 20px;
+            background: #4a90e2;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .status {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #ccc;
+        }
+    </style>
+</head>
+<body>
+    <h1>Simple Ray Tracer</h1>
+    <canvas id="canvas" width="800" height="600"></canvas>
+
+    <div class="controls">
+        <div class="control">
+            <label>Sphere X: <span id="sphereXValue">0</span></label>
+            <input type="range" id="sphereX" min="-5" max="5" step="0.1" value="0">
+        </div>
+        <div class="control">
+            <label>Sphere Y: <span id="sphereYValue">0</span></label>
+            <input type="range" id="sphereY" min="-3" max="3" step="0.1" value="0">
+        </div>
+        <div class="control">
+            <label>Sphere Z: <span id="sphereZValue">-3</span></label>
+            <input type="range" id="sphereZ" min="-10" max="2" step="0.1" value="-3">
+        </div>
+        <div class="control">
+            <label>Sphere Radius: <span id="radiusValue">1.0</span></label>
+            <input type="range" id="radius" min="0.1" max="3" step="0.1" value="1.0">
+        </div>
+        <div class="control">
+            <label>Light Y: <span id="lightYValue">5</span></label>
+            <input type="range" id="lightY" min="1" max="10" step="0.5" value="5">
+        </div>
+        <button onclick="render()">Render</button>
+    </div>
+
+    <div class="status" id="status">Ready</div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const imageData = ctx.createImageData(canvas.width, canvas.height);
+
+        class Vec3 {
+            constructor(x = 0, y = 0, z = 0) {
+                this.x = x; this.y = y; this.z = z;
+            }
+            add(v) { return new Vec3(this.x + v.x, this.y + v.y, this.z + v.z); }
+            sub(v) { return new Vec3(this.x - v.x, this.y - v.y, this.z - v.z); }
+            mul(s) { return new Vec3(this.x * s, this.y * s, this.z * s); }
+            dot(v) { return this.x * v.x + this.y * v.y + this.z * v.z; }
+            length() { return Math.sqrt(this.x * this.x + this.y * this.y + this.z * this.z); }
+            normalize() {
+                const len = this.length();
+                return len > 0 ? new Vec3(this.x / len, this.y / len, this.z / len) : new Vec3();
+            }
+            reflect(n) { return this.sub(n.mul(2 * this.dot(n))); }
+        }
+
+        class Ray {
+            constructor(origin, direction) {
+                this.origin = origin;
+                this.direction = direction.normalize();
+            }
+            at(t) { return this.origin.add(this.direction.mul(t)); }
+        }
+
+        class Sphere {
+            constructor(center, radius, color) {
+                this.center = center;
+                this.radius = radius;
+                this.color = color;
+            }
+
+            intersect(ray) {
+                const oc = ray.origin.sub(this.center);
+                const a = ray.direction.dot(ray.direction);
+                const b = 2.0 * oc.dot(ray.direction);
+                const c = oc.dot(oc) - this.radius * this.radius;
+                const discriminant = b * b - 4 * a * c;
+
+                if (discriminant < 0) return null;
+
+                const t1 = (-b - Math.sqrt(discriminant)) / (2 * a);
+                const t2 = (-b + Math.sqrt(discriminant)) / (2 * a);
+                const t = t1 > 0.001 ? t1 : (t2 > 0.001 ? t2 : null);
+
+                if (t === null) return null;
+
+                const point = ray.at(t);
+                const normal = point.sub(this.center).normalize();
+                return { t, point, normal, color: this.color };
+            }
+        }
+
+        let sphere = new Sphere(new Vec3(0, 0, -3), 1.0, new Vec3(1, 0.3, 0.3));
+        let lightPos = new Vec3(5, 5, 5);
+
+        function trace(ray, depth = 0) {
+            if (depth > 5) return new Vec3(0.1, 0.1, 0.2); // Sky color
+
+            const hit = sphere.intersect(ray);
+            if (!hit) return new Vec3(0.1, 0.1, 0.2); // Sky color
+
+            // Simple lighting
+            const lightDir = lightPos.sub(hit.point).normalize();
+            const viewDir = ray.direction.mul(-1);
+
+            // Diffuse
+            const diffuse = Math.max(0, hit.normal.dot(lightDir));
+
+            // Specular
+            const reflectDir = lightDir.reflect(hit.normal);
+            const specular = Math.pow(Math.max(0, viewDir.dot(reflectDir)), 32);
+
+            // Reflection
+            let reflectionColor = new Vec3(0, 0, 0);
+            if (depth < 3) {
+                const reflectRay = new Ray(hit.point.add(hit.normal.mul(0.001)), ray.direction.reflect(hit.normal));
+                reflectionColor = trace(reflectRay, depth + 1);
+            }
+
+            const color = hit.color.mul(diffuse * 0.8 + 0.2)
+                .add(new Vec3(1, 1, 1).mul(specular * 0.3))
+                .add(reflectionColor.mul(0.3));
+
+            return new Vec3(
+                Math.min(1, color.x),
+                Math.min(1, color.y),
+                Math.min(1, color.z)
+            );
+        }
+
+        function render() {
+            document.getElementById('status').textContent = 'Rendering...';
+
+            setTimeout(() => {
+                const startTime = performance.now();
+
+                for (let y = 0; y < canvas.height; y++) {
+                    for (let x = 0; x < canvas.width; x++) {
+                        const u = x / canvas.width;
+                        const v = 1 - y / canvas.height;
+
+                        const screenX = (u - 0.5) * 2;
+                        const screenY = (v - 0.5) * 2;
+
+                        const ray = new Ray(
+                            new Vec3(0, 0, 0),
+                            new Vec3(screenX, screenY, -1).normalize()
+                        );
+
+                        const color = trace(ray);
+
+                        const index = (y * canvas.width + x) * 4;
+                        imageData.data[index] = Math.min(255, Math.sqrt(color.x) * 255);
+                        imageData.data[index + 1] = Math.min(255, Math.sqrt(color.y) * 255);
+                        imageData.data[index + 2] = Math.min(255, Math.sqrt(color.z) * 255);
+                        imageData.data[index + 3] = 255;
+                    }
+                }
+
+                ctx.putImageData(imageData, 0, 0);
+
+                const endTime = performance.now();
+                document.getElementById('status').textContent = `Rendered in ${(endTime - startTime).toFixed(2)}ms`;
+            }, 10);
+        }
+
+        // Setup controls
+        function setupControl(id, callback) {
+            const slider = document.getElementById(id);
+            const display = document.getElementById(id + 'Value');
+
+            slider.addEventListener('input', (e) => {
+                const value = parseFloat(e.target.value);
+                display.textContent = value.toFixed(1);
+                callback(value);
+            });
+        }
+
+        setupControl('sphereX', (v) => { sphere.center.x = v; });
+        setupControl('sphereY', (v) => { sphere.center.y = v; });
+        setupControl('sphereZ', (v) => { sphere.center.z = v; });
+        setupControl('radius', (v) => { sphere.radius = v; });
+        setupControl('lightY', (v) => { lightPos.y = v; });
+
+        // Initial render
+        render();
+    </script>
+</body>
+</html>

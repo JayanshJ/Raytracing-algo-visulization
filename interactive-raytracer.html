@@ -1,0 +1,1479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive GPU Ray Tracer</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #0a0a0a;
+            color: #fff;
+            font-family: 'Segoe UI', sans-serif;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        .main-container {
+            display: flex;
+            height: 100vh;
+        }
+
+        .viewport {
+            flex: 1;
+            position: relative;
+            background: #000;
+        }
+
+        #canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            cursor: grab;
+        }
+
+        #canvas.dragging {
+            cursor: grabbing;
+        }
+
+        #canvas.sphere-hover {
+            cursor: pointer;
+        }
+
+        .overlay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.95);
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 13px;
+            z-index: 100;
+            min-width: 250px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(74, 144, 226, 0.3);
+        }
+
+        .interaction-hint {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(74, 144, 226, 0.2);
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 12px;
+            border: 1px solid rgba(74, 144, 226, 0.5);
+            max-width: 300px;
+        }
+
+        .side-panel {
+            width: 350px;
+            background: #1a1a1a;
+            border-left: 1px solid #333;
+            overflow-y: auto;
+            padding: 0;
+        }
+
+        .panel-section {
+            border-bottom: 1px solid #333;
+        }
+
+        .section-header {
+            background: #2a2a2a;
+            padding: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.2s;
+        }
+
+        .section-header:hover {
+            background: #333;
+        }
+
+        .section-content {
+            padding: 20px;
+            display: none;
+        }
+
+        .section-content.expanded {
+            display: block;
+        }
+
+        .control-group {
+            margin-bottom: 18px;
+        }
+
+        .control-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: #ccc;
+            font-weight: 500;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: #333;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #4a90e2;
+            cursor: pointer;
+        }
+
+        button {
+            background: linear-gradient(135deg, #4a90e2, #357abd);
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 5px 5px 5px 0;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            background: linear-gradient(135deg, #357abd, #2a5a8a);
+            transform: translateY(-1px);
+        }
+
+        .value-display {
+            float: right;
+            color: #4a90e2;
+            font-weight: 600;
+            min-width: 50px;
+            text-align: right;
+        }
+
+        .preset-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+            margin-top: 15px;
+        }
+
+        .toggle-arrow {
+            transition: transform 0.3s;
+            font-size: 14px;
+        }
+
+        .toggle-arrow.expanded {
+            transform: rotate(90deg);
+        }
+
+        .interaction-mode {
+            background: rgba(74, 144, 226, 0.1);
+            border: 1px solid rgba(74, 144, 226, 0.3);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        .mode-button {
+            padding: 8px 12px;
+            margin: 5px;
+            border-radius: 4px;
+            border: 1px solid #555;
+            background: #333;
+            color: #ccc;
+            font-size: 12px;
+        }
+
+        .mode-button.active {
+            background: #4a90e2;
+            color: white;
+            border-color: #4a90e2;
+        }
+
+        .sphere-list {
+            max-height: 200px;
+            overflow-y: auto;
+            background: #222;
+            border-radius: 6px;
+            margin-top: 10px;
+        }
+
+        .sphere-item {
+            padding: 10px 15px;
+            border-bottom: 1px solid #333;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.2s;
+        }
+
+        .sphere-item:hover {
+            background: #333;
+        }
+
+        .sphere-item.selected {
+            background: #4a90e2;
+            color: white;
+        }
+
+        .sphere-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            border: 2px solid #fff;
+        }
+
+        .physics-controls {
+            background: rgba(80, 200, 120, 0.1);
+            border: 1px solid rgba(80, 200, 120, 0.3);
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <div class="viewport">
+            <canvas id="canvas"></canvas>
+            <div class="overlay">
+                <div><strong>🎮 Interactive Ray Tracer</strong></div>
+                <div style="margin: 10px 0;">
+                    <div>FPS: <span id="fps" style="color: #50c878;">--</span></div>
+                    <div>GPU Load: <span id="gpuLoad" style="color: #ff6b35;">--</span>%</div>
+                    <div>Rays/Frame: <span id="rayCount" style="color: #4a90e2;">--</span>M</div>
+                </div>
+                <div>Mode: <span id="currentMode" style="color: #ffc107;">Orbit Camera</span></div>
+                <div>Selected: <span id="selectedObject">None</span></div>
+            </div>
+
+            <div class="interaction-hint">
+                <strong>🎮 Controls:</strong><br>
+                <span id="controlHints">
+                    • Drag to orbit camera<br>
+                    • Click spheres to select<br>
+                    • Shift+drag to move objects<br>
+                    • Scroll to zoom
+                </span>
+            </div>
+        </div>
+
+        <div class="side-panel">
+            <!-- Interaction Controls -->
+            <div class="panel-section">
+                <div class="section-header" onclick="toggleSection(this)">
+                    <span>🎮 Interaction</span>
+                    <span class="toggle-arrow">▶</span>
+                </div>
+                <div class="section-content expanded">
+                    <div class="interaction-mode">
+                        <label>Interaction Mode:</label>
+                        <div>
+                            <button class="mode-button active" onclick="setMode('camera')">🎥 Camera</button>
+                            <button class="mode-button" onclick="setMode('object')">📦 Objects</button>
+                            <button class="mode-button" onclick="setMode('light')">💡 Lights</button>
+                        </div>
+                    </div>
+
+                    <div class="control-group">
+                        <label>Mouse Sensitivity: <span class="value-display" id="sensitivityValue">1.0</span></label>
+                        <input type="range" id="mouseSensitivity" min="0.1" max="3.0" step="0.1" value="1.0">
+                    </div>
+
+                    <div class="control-group">
+                        <label>Object Smoothing: <span class="value-display" id="smoothingValue">0.9</span></label>
+                        <input type="range" id="objectSmoothing" min="0.5" max="0.99" step="0.01" value="0.9">
+                    </div>
+
+                    <button onclick="addRandomSphere()">🎲 Add Random Sphere</button>
+                    <button onclick="resetScene()" class="secondary">🔄 Reset Scene</button>
+                </div>
+            </div>
+
+            <!-- Object Management -->
+            <div class="panel-section">
+                <div class="section-header" onclick="toggleSection(this)">
+                    <span>📦 Objects</span>
+                    <span class="toggle-arrow">▶</span>
+                </div>
+                <div class="section-content expanded">
+                    <div class="control-group">
+                        <label>Selected Object Properties:</label>
+                        <div id="objectProperties">
+                            <p style="color: #666; font-style: italic;">No object selected</p>
+                        </div>
+                    </div>
+
+                    <div class="sphere-list" id="sphereList"></div>
+
+                    <div class="preset-grid" style="margin-top: 15px;">
+                        <button onclick="addSphereType('metal')">🔘 Metal Ball</button>
+                        <button onclick="addSphereType('glass')">🔮 Glass Ball</button>
+                        <button onclick="addSphereType('emissive')">✨ Glowing Ball</button>
+                        <button onclick="addSphereType('bouncy')">🏀 Bouncy Ball</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Physics & Animation -->
+            <div class="panel-section">
+                <div class="section-header" onclick="toggleSection(this)">
+                    <span>⚡ Physics</span>
+                    <span class="toggle-arrow">▶</span>
+                </div>
+                <div class="section-content">
+                    <div class="physics-controls">
+                        <div class="control-group">
+                            <label>Gravity: <span class="value-display" id="gravityValue">0.0</span></label>
+                            <input type="range" id="gravity" min="0" max="2" step="0.1" value="0.0">
+                        </div>
+
+                        <div class="control-group">
+                            <label>Bounce Factor: <span class="value-display" id="bounceValue">0.8</span></label>
+                            <input type="range" id="bounceFactor" min="0" max="1" step="0.05" value="0.8">
+                        </div>
+
+                        <div class="control-group">
+                            <label>Air Resistance: <span class="value-display" id="airResistanceValue">0.01</span></label>
+                            <input type="range" id="airResistance" min="0" max="0.1" step="0.005" value="0.01">
+                        </div>
+                    </div>
+
+                    <div class="control-group">
+                        <label>Animation Speed: <span class="value-display" id="animSpeedValue">1.0x</span></label>
+                        <input type="range" id="animationSpeed" min="0" max="3" step="0.1" value="1.0">
+                    </div>
+
+                    <button onclick="togglePhysics()">🎯 Toggle Physics</button>
+                    <button onclick="addExplosion()">💥 Explosion!</button>
+                </div>
+            </div>
+
+            <!-- Rendering -->
+            <div class="panel-section">
+                <div class="section-header" onclick="toggleSection(this)">
+                    <span>🎨 Rendering</span>
+                    <span class="toggle-arrow">▶</span>
+                </div>
+                <div class="section-content">
+                    <div class="control-group">
+                        <label>Quality: <span class="value-display" id="qualityValue">Medium</span></label>
+                        <select id="qualityPreset" onchange="setQuality(this.value)">
+                            <option value="low">Low (Fast)</option>
+                            <option value="medium" selected>Medium</option>
+                            <option value="high">High Quality</option>
+                            <option value="ultra">🔥 Ultra (GPU Melter)</option>
+                        </select>
+                    </div>
+
+                    <div class="control-group">
+                        <label>Trails: <span class="value-display" id="trailsValue">Off</span></label>
+                        <input type="checkbox" id="objectTrails">
+                    </div>
+
+                    <div class="control-group">
+                        <label>Glow Effects: <span class="value-display" id="glowValue">On</span></label>
+                        <input type="checkbox" id="glowEffects" checked>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Enhanced shader sources with interactive features
+        const VERTEX_SHADER_SOURCE = `
+attribute vec2 a_position;
+void main() {
+    gl_Position = vec4(a_position, 0.0, 1.0);
+}`;
+
+        const FRAGMENT_SHADER_SOURCE = `
+precision highp float;
+
+uniform vec2 u_resolution;
+uniform float u_time;
+uniform vec3 u_camera;
+uniform int u_samples;
+uniform int u_bounces;
+uniform float u_resolution_scale;
+
+// Sphere data arrays (up to 16 spheres)
+uniform vec3 u_sphere_positions[16];
+uniform vec3 u_sphere_colors[16];
+uniform vec3 u_sphere_velocities[16];
+uniform float u_sphere_radii[16];
+uniform float u_sphere_metallic[16];
+uniform float u_sphere_emission[16];
+uniform int u_sphere_count;
+
+// Physics
+uniform float u_gravity;
+uniform float u_bounce_factor;
+uniform float u_air_resistance;
+
+// Effects
+uniform int u_trails;
+uniform int u_glow_effects;
+uniform float u_animation_speed;
+
+float hash(float n) {
+    return fract(sin(n) * 43758.5453123);
+}
+
+float noise(vec2 x) {
+    vec2 p = floor(x);
+    vec2 f = fract(x);
+    f = f * f * (3.0 - 2.0 * f);
+    float n = p.x + p.y * 57.0;
+    return mix(mix(hash(n), hash(n + 1.0), f.x),
+              mix(hash(n + 57.0), hash(n + 58.0), f.x), f.y);
+}
+
+struct Ray {
+    vec3 origin;
+    vec3 direction;
+};
+
+struct Hit {
+    bool hit;
+    float t;
+    vec3 point;
+    vec3 normal;
+    vec3 color;
+    float metallic;
+    float emission;
+    int objectId;
+};
+
+Hit intersectSphere(Ray ray, vec3 center, float radius, vec3 color, float metallic, float emission, int id) {
+    Hit h;
+    h.hit = false;
+    h.objectId = id;
+
+    vec3 oc = ray.origin - center;
+    float a = dot(ray.direction, ray.direction);
+    float b = 2.0 * dot(oc, ray.direction);
+    float c = dot(oc, oc) - radius * radius;
+    float discriminant = b * b - 4.0 * a * c;
+
+    if (discriminant >= 0.0) {
+        float t1 = (-b - sqrt(discriminant)) / (2.0 * a);
+        float t2 = (-b + sqrt(discriminant)) / (2.0 * a);
+        float t = t1 > 0.001 ? t1 : (t2 > 0.001 ? t2 : -1.0);
+
+        if (t > 0.001) {
+            h.hit = true;
+            h.t = t;
+            h.point = ray.origin + t * ray.direction;
+            h.normal = normalize(h.point - center);
+            h.color = color;
+            h.metallic = metallic;
+            h.emission = emission;
+
+            // Add procedural texture variation
+            vec3 texCoord = h.point * 2.0;
+            float pattern = noise(texCoord.xy + texCoord.yz);
+            h.color *= 0.8 + 0.2 * pattern;
+        }
+    }
+
+    return h;
+}
+
+Hit intersectPlane(Ray ray, vec3 point, vec3 normal) {
+    Hit h;
+    h.hit = false;
+    h.objectId = -1;
+
+    float denom = dot(normal, ray.direction);
+    if (abs(denom) > 1e-6) {
+        float t = dot(point - ray.origin, normal) / denom;
+        if (t > 0.001) {
+            h.hit = true;
+            h.t = t;
+            h.point = ray.origin + t * ray.direction;
+            h.normal = normal;
+
+            // Enhanced checkerboard with subtle noise
+            vec2 uv = h.point.xz * 0.5;
+            float checker = step(0.5, mod(floor(uv.x) + floor(uv.y), 2.0));
+            float noisePattern = noise(uv * 4.0) * 0.1;
+            h.color = mix(vec3(0.2), vec3(0.9), checker) + noisePattern;
+            h.metallic = 0.1 + checker * 0.2;
+            h.emission = 0.0;
+        }
+    }
+
+    return h;
+}
+
+Hit intersectScene(Ray ray) {
+    Hit closest;
+    closest.hit = false;
+    closest.t = 1e20;
+
+    // Intersect all spheres
+    for (int i = 0; i < 16; i++) {
+        if (i >= u_sphere_count) break;
+
+        Hit h = intersectSphere(
+            ray,
+            u_sphere_positions[i],
+            u_sphere_radii[i],
+            u_sphere_colors[i],
+            u_sphere_metallic[i],
+            u_sphere_emission[i],
+            i
+        );
+
+        if (h.hit && h.t < closest.t) {
+            closest = h;
+        }
+    }
+
+    // Ground plane
+    Hit ground = intersectPlane(ray, vec3(0, -3, 0), vec3(0, 1, 0));
+    if (ground.hit && ground.t < closest.t) {
+        closest = ground;
+    }
+
+    return closest;
+}
+
+vec3 sampleEnvironment(vec3 direction) {
+    float t = 0.5 * (direction.y + 1.0);
+    vec3 skyColor = mix(vec3(0.1, 0.1, 0.3), vec3(0.5, 0.7, 1.0), t);
+
+    // Dynamic stars
+    if (direction.y > 0.0) {
+        vec2 uv = direction.xz / direction.y;
+        float stars = step(0.97, noise(uv * 30.0 + u_time * 0.1));
+        skyColor += vec3(stars * 0.5);
+    }
+
+    // Animated aurora effect
+    if (direction.y > 0.3) {
+        float aurora = sin(direction.x * 5.0 + u_time) * sin(direction.z * 3.0 + u_time * 0.7);
+        aurora = smoothstep(0.8, 1.0, aurora) * 0.3;
+        skyColor += vec3(0.2, 0.8, 0.4) * aurora;
+    }
+
+    return skyColor;
+}
+
+vec3 calculateLighting(Hit hit, vec3 viewDir) {
+    vec3 color = vec3(0.0);
+
+    // Multiple dynamic lights
+    vec3 lightPositions[4];
+    vec3 lightColors[4];
+    float lightIntensities[4];
+
+    // Main animated light
+    lightPositions[0] = vec3(
+        5.0 + 3.0 * sin(u_time * u_animation_speed * 0.7),
+        8.0 + 2.0 * cos(u_time * u_animation_speed * 0.5),
+        5.0 + 3.0 * cos(u_time * u_animation_speed * 0.7)
+    );
+    lightColors[0] = vec3(1.0, 0.9, 0.8);
+    lightIntensities[0] = 20.0;
+
+    // Colored orbiting lights
+    for (int i = 1; i < 4; i++) {
+        float offset = float(i) * 2.094;
+        float t = u_time * u_animation_speed + offset;
+        lightPositions[i] = vec3(
+            sin(t) * 6.0,
+            3.0 + sin(t * 1.3) * 2.0,
+            cos(t) * 6.0 - 5.0
+        );
+        lightColors[i] = vec3(
+            0.5 + 0.5 * sin(offset),
+            0.5 + 0.5 * cos(offset + 1.0),
+            0.5 + 0.5 * sin(offset + 2.0)
+        );
+        lightIntensities[i] = 12.0;
+    }
+
+    for (int i = 0; i < 4; i++) {
+        vec3 lightDir = lightPositions[i] - hit.point;
+        float distance = length(lightDir);
+        lightDir = normalize(lightDir);
+
+        // Shadow test
+        Ray shadowRay;
+        shadowRay.origin = hit.point + hit.normal * 0.001;
+        shadowRay.direction = lightDir;
+        Hit shadowHit = intersectScene(shadowRay);
+
+        bool inShadow = shadowHit.hit && shadowHit.t < distance;
+
+        if (!inShadow) {
+            float attenuation = lightIntensities[i] / (1.0 + 0.05 * distance + 0.01 * distance * distance);
+            float lambertian = max(0.0, dot(hit.normal, lightDir));
+            color += hit.color * lightColors[i] * lambertian * attenuation;
+
+            // Enhanced specular with metallic response
+            vec3 reflectDir = reflect(-lightDir, hit.normal);
+            float spec = pow(max(dot(viewDir, reflectDir), 0.0), mix(8.0, 64.0, hit.metallic));
+            color += lightColors[i] * spec * attenuation * (0.3 + hit.metallic * 0.7);
+        }
+    }
+
+    // Emission
+    color += hit.color * hit.emission;
+
+    // Enhanced ambient with color temperature
+    color += hit.color * mix(vec3(0.1, 0.1, 0.15), vec3(0.15, 0.12, 0.1), hit.metallic);
+
+    return color;
+}
+
+vec3 trace(Ray ray, vec2 seed) {
+    vec3 color = vec3(0.0);
+    vec3 throughput = vec3(1.0);
+
+    for (int bounce = 0; bounce < 12; bounce++) {
+        if (bounce >= u_bounces) break;
+
+        Hit hit = intersectScene(ray);
+
+        if (!hit.hit) {
+            color += throughput * sampleEnvironment(ray.direction);
+            break;
+        }
+
+        vec3 viewDir = -ray.direction;
+        vec3 lighting = calculateLighting(hit, viewDir);
+        color += throughput * lighting;
+
+        // Enhanced reflection with roughness
+        if (hit.metallic > 0.1) {
+            vec3 reflectDir = reflect(ray.direction, hit.normal);
+
+            // Add roughness-based scattering
+            float roughness = 1.0 - hit.metallic;
+            float randomX = (hash(seed.x + float(bounce)) - 0.5) * roughness * 0.2;
+            float randomY = (hash(seed.y + float(bounce)) - 0.5) * roughness * 0.2;
+            reflectDir = normalize(reflectDir + vec3(randomX, randomY, 0.0));
+
+            ray.origin = hit.point + hit.normal * 0.001;
+            ray.direction = reflectDir;
+            throughput *= hit.color * hit.metallic;
+        } else {
+            break;
+        }
+
+        // Russian roulette for performance
+        float maxComponent = max(max(throughput.r, throughput.g), throughput.b);
+        if (maxComponent < 0.1) {
+            if (hash(seed.x + float(bounce) + seed.y) > maxComponent) break;
+            throughput /= maxComponent;
+        }
+    }
+
+    return color;
+}
+
+void main() {
+    vec2 coord = gl_FragCoord.xy * u_resolution_scale;
+    vec2 screenPos = (coord / u_resolution) * 2.0 - 1.0;
+    screenPos.x *= u_resolution.x / u_resolution.y;
+
+    vec3 color = vec3(0.0);
+    vec3 rayOrigin = u_camera;
+
+    // Multi-sampling with better distribution
+    for (int sample = 0; sample < 16; sample++) {
+        if (sample >= u_samples) break;
+
+        vec2 jitter = vec2(
+            hash(coord.x + float(sample) * 0.1),
+            hash(coord.y + float(sample) * 0.1 + 100.0)
+        ) - 0.5;
+        jitter *= 2.0 / u_resolution;
+
+        vec2 samplePos = screenPos + jitter;
+        vec3 rayDir = normalize(vec3(samplePos, -1.0));
+
+        Ray ray;
+        ray.origin = rayOrigin;
+        ray.direction = rayDir;
+
+        vec2 seed = coord + float(sample) + u_time;
+        color += trace(ray, seed);
+    }
+
+    color /= float(u_samples);
+
+    // Enhanced post-processing
+    if (u_glow_effects == 1) {
+        // Add bloom effect
+        float brightness = dot(color, vec3(0.299, 0.587, 0.114));
+        if (brightness > 1.0) {
+            color += (color - 1.0) * 0.5;
+        }
+    }
+
+    // Tone mapping and gamma correction
+    color = color / (1.0 + color);
+    color = pow(color, vec3(1.0 / 2.2));
+
+    gl_FragColor = vec4(color, 1.0);
+}`;
+
+        class InteractiveRayTracer {
+            constructor() {
+                this.canvas = document.getElementById('canvas');
+                this.debug = [];
+
+                // Initialize scene data
+                this.initScene();
+
+                try {
+                    this.log('Starting interactive ray tracer...');
+                    this.resizeCanvas();
+                    this.initWebGL();
+                    this.createShaders();
+                    this.setupControls();
+                    this.setupStats();
+                    this.setupMouseControls();
+                    this.setupPhysics();
+                    this.log('✅ Interactive ray tracer initialized!');
+                    this.animate();
+                } catch (error) {
+                    this.showError(error);
+                }
+            }
+
+            initScene() {
+                // Camera
+                this.camera = [0, 2, 12];
+                this.cameraTarget = [0, 0, -5];
+                this.cameraAngleX = 0;
+                this.cameraAngleY = 0;
+
+                // Spheres with physics properties
+                this.spheres = [
+                    {
+                        position: [-3, 1, -5],
+                        velocity: [0, 0, 0],
+                        radius: 1.0,
+                        color: [0.9, 0.1, 0.1],
+                        metallic: 0.9,
+                        emission: 0.0,
+                        mass: 1.0,
+                        selected: false
+                    },
+                    {
+                        position: [3, 1, -5],
+                        velocity: [0, 0, 0],
+                        radius: 1.0,
+                        color: [0.1, 0.9, 0.1],
+                        metallic: 0.0,
+                        emission: 0.0,
+                        mass: 1.0,
+                        selected: false
+                    },
+                    {
+                        position: [0, 3, -3],
+                        velocity: [0, 0, 0],
+                        radius: 0.8,
+                        color: [0.9, 0.5, 0.1],
+                        metallic: 0.2,
+                        emission: 2.0,
+                        mass: 0.8,
+                        selected: false
+                    },
+                    {
+                        position: [0, 0, -8],
+                        velocity: [1, 0.5, 0],
+                        radius: 0.6,
+                        color: [0.1, 0.5, 0.9],
+                        metallic: 0.8,
+                        emission: 0.0,
+                        mass: 0.6,
+                        selected: false
+                    }
+                ];
+
+                // Settings
+                this.settings = {
+                    resolution: 1.0,
+                    samples: 4,
+                    bounces: 6,
+                    mouseSensitivity: 1.0,
+                    objectSmoothing: 0.9,
+                    gravity: 0.0,
+                    bounceFactor: 0.8,
+                    airResistance: 0.01,
+                    animationSpeed: 1.0,
+                    trails: false,
+                    glowEffects: true,
+                    physicsEnabled: false
+                };
+
+                // Interaction
+                this.interactionMode = 'camera'; // 'camera', 'object', 'light'
+                this.selectedSphere = -1;
+                this.isDragging = false;
+                this.dragOffset = [0, 0, 0];
+            }
+
+            log(message) {
+                console.log(message);
+                this.debug.push(message);
+            }
+
+            showError(error) {
+                console.error('Ray tracer error:', error);
+                document.body.innerHTML = `
+                    <div style="padding: 40px; color: white; background: #1a1a1a; text-align: center; height: 100vh; display: flex; flex-direction: column; justify-content: center;">
+                        <h2>🚨 Interactive Ray Tracer Failed</h2>
+                        <p style="color: #ff6b6b; margin: 20px 0;"><strong>Error:</strong> ${error.message}</p>
+                        <button onclick="window.location.reload()" style="margin-top: 20px; padding: 15px 30px; background: #4a90e2; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px;">
+                            🔄 Try Again
+                        </button>
+                    </div>
+                `;
+            }
+
+            resizeCanvas() {
+                const rect = this.canvas.parentElement.getBoundingClientRect();
+                this.canvas.width = rect.width;
+                this.canvas.height = rect.height;
+            }
+
+            initWebGL() {
+                this.gl = this.canvas.getContext('webgl2') || this.canvas.getContext('webgl');
+                if (!this.gl) {
+                    throw new Error('WebGL not supported');
+                }
+                this.log(`WebGL initialized: ${this.gl.getParameter(this.gl.VERSION)}`);
+            }
+
+            createShaders() {
+                this.log('Creating shaders...');
+                this.program = this.createProgram(VERTEX_SHADER_SOURCE, FRAGMENT_SHADER_SOURCE);
+                this.getUniforms();
+                this.createGeometry();
+            }
+
+            createProgram(vertexSource, fragmentSource) {
+                const gl = this.gl;
+
+                const vertexShader = this.compileShader(gl.VERTEX_SHADER, vertexSource);
+                const fragmentShader = this.compileShader(gl.FRAGMENT_SHADER, fragmentSource);
+
+                const program = gl.createProgram();
+                gl.attachShader(program, vertexShader);
+                gl.attachShader(program, fragmentShader);
+                gl.linkProgram(program);
+
+                if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                    throw new Error(`Program link failed: ${gl.getProgramInfoLog(program)}`);
+                }
+
+                return program;
+            }
+
+            compileShader(type, source) {
+                const gl = this.gl;
+                const shader = gl.createShader(type);
+
+                gl.shaderSource(shader, source);
+                gl.compileShader(shader);
+
+                if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                    const error = gl.getShaderInfoLog(shader);
+                    gl.deleteShader(shader);
+                    throw new Error(`Shader compilation failed: ${error}`);
+                }
+
+                return shader;
+            }
+
+            getUniforms() {
+                const gl = this.gl;
+                this.uniforms = {};
+
+                const names = [
+                    'u_resolution', 'u_time', 'u_camera', 'u_samples', 'u_bounces',
+                    'u_resolution_scale', 'u_sphere_count', 'u_gravity', 'u_bounce_factor',
+                    'u_air_resistance', 'u_trails', 'u_glow_effects', 'u_animation_speed'
+                ];
+
+                names.forEach(name => {
+                    this.uniforms[name] = gl.getUniformLocation(this.program, name);
+                });
+
+                // Get array uniform locations
+                for (let i = 0; i < 16; i++) {
+                    this.uniforms[`u_sphere_positions[${i}]`] = gl.getUniformLocation(this.program, `u_sphere_positions[${i}]`);
+                    this.uniforms[`u_sphere_colors[${i}]`] = gl.getUniformLocation(this.program, `u_sphere_colors[${i}]`);
+                    this.uniforms[`u_sphere_velocities[${i}]`] = gl.getUniformLocation(this.program, `u_sphere_velocities[${i}]`);
+                    this.uniforms[`u_sphere_radii[${i}]`] = gl.getUniformLocation(this.program, `u_sphere_radii[${i}]`);
+                    this.uniforms[`u_sphere_metallic[${i}]`] = gl.getUniformLocation(this.program, `u_sphere_metallic[${i}]`);
+                    this.uniforms[`u_sphere_emission[${i}]`] = gl.getUniformLocation(this.program, `u_sphere_emission[${i}]`);
+                }
+            }
+
+            createGeometry() {
+                const gl = this.gl;
+                const vertices = new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]);
+
+                this.vertexBuffer = gl.createBuffer();
+                gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+                gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+            }
+
+            setupMouseControls() {
+                let isMouseDown = false;
+                let lastMouseX = 0;
+                let lastMouseY = 0;
+                let shiftPressed = false;
+
+                // Keyboard events
+                window.addEventListener('keydown', (e) => {
+                    if (e.key === 'Shift') {
+                        shiftPressed = true;
+                        this.updateControlHints();
+                    }
+                });
+
+                window.addEventListener('keyup', (e) => {
+                    if (e.key === 'Shift') {
+                        shiftPressed = false;
+                        this.updateControlHints();
+                    }
+                });
+
+                this.canvas.addEventListener('mousedown', (e) => {
+                    isMouseDown = true;
+                    lastMouseX = e.clientX;
+                    lastMouseY = e.clientY;
+
+                    if (shiftPressed && this.interactionMode === 'object') {
+                        // Try to select/drag object
+                        const sphere = this.getObjectAtMouse(e.clientX, e.clientY);
+                        if (sphere !== -1) {
+                            this.selectedSphere = sphere;
+                            this.isDragging = true;
+                            this.canvas.classList.add('dragging');
+                            this.updateSelectedObject();
+                        }
+                    }
+                });
+
+                this.canvas.addEventListener('mousemove', (e) => {
+                    if (!isMouseDown) return;
+
+                    const deltaX = e.clientX - lastMouseX;
+                    const deltaY = e.clientY - lastMouseY;
+
+                    if (this.isDragging && this.selectedSphere !== -1) {
+                        // Move selected sphere
+                        const sensitivity = this.settings.mouseSensitivity * 0.02;
+                        this.spheres[this.selectedSphere].position[0] += deltaX * sensitivity;
+                        this.spheres[this.selectedSphere].position[1] -= deltaY * sensitivity;
+
+                        // Apply smoothing to velocity for natural movement
+                        const smoothing = this.settings.objectSmoothing;
+                        this.spheres[this.selectedSphere].velocity[0] =
+                            smoothing * this.spheres[this.selectedSphere].velocity[0] +
+                            (1 - smoothing) * deltaX * sensitivity * 10;
+                        this.spheres[this.selectedSphere].velocity[1] =
+                            smoothing * this.spheres[this.selectedSphere].velocity[1] +
+                            (1 - smoothing) * (-deltaY * sensitivity * 10);
+                    } else if (this.interactionMode === 'camera') {
+                        // Orbit camera
+                        const sensitivity = this.settings.mouseSensitivity * 0.01;
+                        this.cameraAngleY += deltaX * sensitivity;
+                        this.cameraAngleX += deltaY * sensitivity;
+                        this.cameraAngleX = Math.max(-Math.PI/2, Math.min(Math.PI/2, this.cameraAngleX));
+
+                        this.updateCameraPosition();
+                    }
+
+                    lastMouseX = e.clientX;
+                    lastMouseY = e.clientY;
+                });
+
+                this.canvas.addEventListener('mouseup', () => {
+                    isMouseDown = false;
+                    this.isDragging = false;
+                    this.canvas.classList.remove('dragging');
+                });
+
+                this.canvas.addEventListener('click', (e) => {
+                    if (!shiftPressed && this.interactionMode === 'object') {
+                        const sphere = this.getObjectAtMouse(e.clientX, e.clientY);
+                        this.selectedSphere = sphere;
+                        this.updateSelectedObject();
+                        this.updateSphereList();
+                    }
+                });
+
+                // Zoom with scroll
+                this.canvas.addEventListener('wheel', (e) => {
+                    e.preventDefault();
+                    const zoomSpeed = 0.5;
+                    const forward = this.normalizeVector(this.subtractVectors(this.cameraTarget, this.camera));
+
+                    this.camera[0] += forward[0] * e.deltaY * zoomSpeed * 0.01;
+                    this.camera[1] += forward[1] * e.deltaY * zoomSpeed * 0.01;
+                    this.camera[2] += forward[2] * e.deltaY * zoomSpeed * 0.01;
+                });
+            }
+
+            getObjectAtMouse(mouseX, mouseY) {
+                // Simple sphere picking based on screen projection
+                const rect = this.canvas.getBoundingClientRect();
+                const x = ((mouseX - rect.left) / rect.width) * 2 - 1;
+                const y = (1 - (mouseY - rect.top) / rect.height) * 2 - 1;
+
+                // Create ray from camera through mouse position
+                const rayDir = this.normalizeVector([x * (rect.width / rect.height), y, -1]);
+
+                let closestSphere = -1;
+                let closestDistance = Infinity;
+
+                for (let i = 0; i < this.spheres.length; i++) {
+                    const sphere = this.spheres[i];
+                    const toSphere = this.subtractVectors(sphere.position, this.camera);
+                    const projectionLength = this.dotProduct(toSphere, rayDir);
+
+                    if (projectionLength > 0) {
+                        const closestPoint = [
+                            this.camera[0] + rayDir[0] * projectionLength,
+                            this.camera[1] + rayDir[1] * projectionLength,
+                            this.camera[2] + rayDir[2] * projectionLength
+                        ];
+
+                        const distance = this.vectorLength(this.subtractVectors(closestPoint, sphere.position));
+
+                        if (distance < sphere.radius && projectionLength < closestDistance) {
+                            closestSphere = i;
+                            closestDistance = projectionLength;
+                        }
+                    }
+                }
+
+                return closestSphere;
+            }
+
+            updateCameraPosition() {
+                const radius = this.vectorLength(this.subtractVectors(this.camera, this.cameraTarget));
+                this.camera = [
+                    this.cameraTarget[0] + radius * Math.sin(this.cameraAngleY) * Math.cos(this.cameraAngleX),
+                    this.cameraTarget[1] + radius * Math.sin(this.cameraAngleX),
+                    this.cameraTarget[2] + radius * Math.cos(this.cameraAngleY) * Math.cos(this.cameraAngleX)
+                ];
+            }
+
+            setupPhysics() {
+                this.lastPhysicsTime = performance.now();
+            }
+
+            updatePhysics() {
+                if (!this.settings.physicsEnabled) return;
+
+                const now = performance.now();
+                const deltaTime = (now - this.lastPhysicsTime) * 0.001 * this.settings.animationSpeed;
+                this.lastPhysicsTime = now;
+
+                for (let i = 0; i < this.spheres.length; i++) {
+                    const sphere = this.spheres[i];
+
+                    // Apply gravity
+                    sphere.velocity[1] -= this.settings.gravity * deltaTime;
+
+                    // Apply air resistance
+                    const resistance = 1.0 - this.settings.airResistance;
+                    sphere.velocity[0] *= resistance;
+                    sphere.velocity[1] *= resistance;
+                    sphere.velocity[2] *= resistance;
+
+                    // Update position
+                    sphere.position[0] += sphere.velocity[0] * deltaTime;
+                    sphere.position[1] += sphere.velocity[1] * deltaTime;
+                    sphere.position[2] += sphere.velocity[2] * deltaTime;
+
+                    // Ground collision
+                    if (sphere.position[1] - sphere.radius < -3) {
+                        sphere.position[1] = -3 + sphere.radius;
+                        sphere.velocity[1] = Math.abs(sphere.velocity[1]) * this.settings.bounceFactor;
+                    }
+
+                    // Sphere-sphere collisions
+                    for (let j = i + 1; j < this.spheres.length; j++) {
+                        const other = this.spheres[j];
+                        const distance = this.vectorLength(this.subtractVectors(sphere.position, other.position));
+                        const minDistance = sphere.radius + other.radius;
+
+                        if (distance < minDistance) {
+                            // Simple elastic collision
+                            const overlap = minDistance - distance;
+                            const direction = this.normalizeVector(this.subtractVectors(sphere.position, other.position));
+
+                            sphere.position[0] += direction[0] * overlap * 0.5;
+                            sphere.position[1] += direction[1] * overlap * 0.5;
+                            sphere.position[2] += direction[2] * overlap * 0.5;
+
+                            other.position[0] -= direction[0] * overlap * 0.5;
+                            other.position[1] -= direction[1] * overlap * 0.5;
+                            other.position[2] -= direction[2] * overlap * 0.5;
+
+                            // Exchange velocities (simplified)
+                            const tempVel = [...sphere.velocity];
+                            sphere.velocity = [...other.velocity];
+                            other.velocity = tempVel;
+                        }
+                    }
+                }
+            }
+
+            setupControls() {
+                // Interaction mode buttons
+                window.setMode = (mode) => {
+                    this.interactionMode = mode;
+                    document.querySelectorAll('.mode-button').forEach(btn => btn.classList.remove('active'));
+                    event.target.classList.add('active');
+                    document.getElementById('currentMode').textContent =
+                        mode === 'camera' ? 'Orbit Camera' :
+                        mode === 'object' ? 'Move Objects' : 'Adjust Lights';
+                    this.updateControlHints();
+                };
+
+                // Quality presets
+                window.setQuality = (preset) => {
+                    const settings = {
+                        low: { resolution: 0.75, samples: 2, bounces: 4 },
+                        medium: { resolution: 1.0, samples: 4, bounces: 6 },
+                        high: { resolution: 1.25, samples: 8, bounces: 8 },
+                        ultra: { resolution: 1.5, samples: 12, bounces: 10 }
+                    };
+
+                    Object.assign(this.settings, settings[preset]);
+                    document.getElementById('qualityValue').textContent =
+                        preset.charAt(0).toUpperCase() + preset.slice(1);
+                };
+
+                // Scene functions
+                window.addRandomSphere = () => this.addRandomSphere();
+                window.addSphereType = (type) => this.addSphereType(type);
+                window.resetScene = () => this.resetScene();
+                window.togglePhysics = () => this.togglePhysics();
+                window.addExplosion = () => this.addExplosion();
+
+                // Setup sliders
+                this.setupSlider('mouseSensitivity', (v) => v.toFixed(1));
+                this.setupSlider('objectSmoothing', (v) => v.toFixed(2));
+                this.setupSlider('gravity', (v) => v.toFixed(1));
+                this.setupSlider('bounceFactor', (v) => v.toFixed(2));
+                this.setupSlider('airResistance', (v) => v.toFixed(3));
+                this.setupSlider('animationSpeed', (v) => `${v}x`);
+
+                this.setupCheckbox('objectTrails', 'trails', 'trailsValue');
+                this.setupCheckbox('glowEffects', 'glowEffects', 'glowValue');
+
+                this.updateSphereList();
+                this.updateControlHints();
+            }
+
+            setupSlider(id, formatter) {
+                const slider = document.getElementById(id);
+                const display = document.getElementById(id + 'Value');
+
+                if (slider && display) {
+                    slider.addEventListener('input', (e) => {
+                        const value = parseFloat(e.target.value);
+                        this.settings[id] = value;
+                        display.textContent = formatter ? formatter(value) : value;
+                    });
+                }
+            }
+
+            setupCheckbox(id, setting, displayId) {
+                const checkbox = document.getElementById(id);
+                const display = document.getElementById(displayId);
+
+                if (checkbox && display) {
+                    checkbox.addEventListener('change', (e) => {
+                        this.settings[setting] = e.target.checked;
+                        display.textContent = e.target.checked ? 'On' : 'Off';
+                    });
+                }
+            }
+
+            addRandomSphere() {
+                if (this.spheres.length >= 16) return;
+
+                this.spheres.push({
+                    position: [
+                        (Math.random() - 0.5) * 8,
+                        Math.random() * 4 + 1,
+                        -8 + (Math.random() - 0.5) * 6
+                    ],
+                    velocity: [
+                        (Math.random() - 0.5) * 2,
+                        (Math.random() - 0.5) * 2,
+                        (Math.random() - 0.5) * 2
+                    ],
+                    radius: 0.5 + Math.random() * 0.8,
+                    color: [Math.random(), Math.random(), Math.random()],
+                    metallic: Math.random(),
+                    emission: Math.random() < 0.2 ? Math.random() * 2 : 0,
+                    mass: 0.5 + Math.random() * 1.5,
+                    selected: false
+                });
+
+                this.updateSphereList();
+            }
+
+            addSphereType(type) {
+                if (this.spheres.length >= 16) return;
+
+                const types = {
+                    metal: { color: [0.9, 0.9, 0.95], metallic: 0.95, emission: 0 },
+                    glass: { color: [0.9, 0.95, 1.0], metallic: 0.1, emission: 0 },
+                    emissive: { color: [1.0, 0.7, 0.3], metallic: 0.0, emission: 3.0 },
+                    bouncy: { color: [1.0, 0.2, 0.8], metallic: 0.3, emission: 0 }
+                };
+
+                const config = types[type];
+                this.spheres.push({
+                    position: [0, 2, -5],
+                    velocity: [0, 0, 0],
+                    radius: 0.8,
+                    color: config.color,
+                    metallic: config.metallic,
+                    emission: config.emission,
+                    mass: 1.0,
+                    selected: false
+                });
+
+                this.updateSphereList();
+            }
+
+            togglePhysics() {
+                this.settings.physicsEnabled = !this.settings.physicsEnabled;
+                document.querySelector('button[onclick="togglePhysics()"]').textContent =
+                    this.settings.physicsEnabled ? '⏸️ Pause Physics' : '▶️ Start Physics';
+            }
+
+            addExplosion() {
+                const center = [0, 0, -5];
+                const force = 15;
+
+                this.spheres.forEach(sphere => {
+                    const direction = this.normalizeVector(this.subtractVectors(sphere.position, center));
+                    const distance = this.vectorLength(this.subtractVectors(sphere.position, center));
+                    const strength = force / (1 + distance);
+
+                    sphere.velocity[0] += direction[0] * strength;
+                    sphere.velocity[1] += direction[1] * strength;
+                    sphere.velocity[2] += direction[2] * strength;
+                });
+            }
+
+            resetScene() {
+                this.initScene();
+                this.updateSphereList();
+                this.updateSelectedObject();
+            }
+
+            updateSphereList() {
+                const list = document.getElementById('sphereList');
+                list.innerHTML = '';
+
+                this.spheres.forEach((sphere, index) => {
+                    const item = document.createElement('div');
+                    item.className = `sphere-item ${index === this.selectedSphere ? 'selected' : ''}`;
+                    item.onclick = () => {
+                        this.selectedSphere = index;
+                        this.updateSphereList();
+                        this.updateSelectedObject();
+                    };
+
+                    const colorStyle = `rgb(${Math.floor(sphere.color[0] * 255)}, ${Math.floor(sphere.color[1] * 255)}, ${Math.floor(sphere.color[2] * 255)})`;
+
+                    item.innerHTML = `
+                        <span>Sphere ${index + 1}</span>
+                        <div class="sphere-color" style="background: ${colorStyle};"></div>
+                    `;
+
+                    list.appendChild(item);
+                });
+            }
+
+            updateSelectedObject() {
+                const objectName = this.selectedSphere === -1 ? 'None' : `Sphere ${this.selectedSphere + 1}`;
+                document.getElementById('selectedObject').textContent = objectName;
+
+                const props = document.getElementById('objectProperties');
+                if (this.selectedSphere === -1) {
+                    props.innerHTML = '<p style="color: #666; font-style: italic;">No object selected</p>';
+                } else {
+                    const sphere = this.spheres[this.selectedSphere];
+                    props.innerHTML = `
+                        <div style="font-size: 12px; line-height: 1.4;">
+                            <div>Position: (${sphere.position.map(v => v.toFixed(1)).join(', ')})</div>
+                            <div>Velocity: (${sphere.velocity.map(v => v.toFixed(1)).join(', ')})</div>
+                            <div>Radius: ${sphere.radius.toFixed(1)}</div>
+                            <div>Metallic: ${sphere.metallic.toFixed(2)}</div>
+                            <div>Emission: ${sphere.emission.toFixed(1)}</div>
+                        </div>
+                    `;
+                }
+            }
+
+            updateControlHints() {
+                const hints = document.getElementById('controlHints');
+                const mode = this.interactionMode;
+
+                if (mode === 'camera') {
+                    hints.innerHTML = '• Drag to orbit camera<br>• Scroll to zoom<br>• Click objects to select';
+                } else if (mode === 'object') {
+                    hints.innerHTML = '• Click to select objects<br>• Shift+drag to move<br>• Physics affects movement';
+                } else {
+                    hints.innerHTML = '• Drag to move lights<br>• Shift+click to add<br>• Del to remove';
+                }
+            }
+
+            setupStats() {
+                this.fpsHistory = new Array(60).fill(0);
+                this.fpsIndex = 0;
+                this.lastTime = performance.now();
+            }
+
+            updateStats() {
+                const now = performance.now();
+                const frameTime = now - this.lastTime;
+                this.lastTime = now;
+
+                this.fpsHistory[this.fpsIndex] = 1000 / frameTime;
+                this.fpsIndex = (this.fpsIndex + 1) % this.fpsHistory.length;
+
+                const fps = this.fpsHistory.reduce((a, b) => a + b) / this.fpsHistory.length;
+                const gpuLoad = Math.min(100, Math.max(0, 100 - fps * 1.67));
+
+                document.getElementById('fps').textContent = fps.toFixed(1);
+                document.getElementById('gpuLoad').textContent = gpuLoad.toFixed(0);
+                document.getElementById('rayCount').textContent = (this.canvas.width * this.canvas.height * this.settings.samples / 1000000).toFixed(1);
+            }
+
+            render() {
+                this.updatePhysics();
+
+                const gl = this.gl;
+
+                try {
+                    gl.useProgram(this.program);
+
+                    // Bind geometry
+                    const positionLocation = gl.getAttribLocation(this.program, 'a_position');
+                    gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+                    gl.enableVertexAttribArray(positionLocation);
+                    gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+                    // Set basic uniforms
+                    if (this.uniforms.u_resolution) gl.uniform2f(this.uniforms.u_resolution, this.canvas.width, this.canvas.height);
+                    if (this.uniforms.u_time) gl.uniform1f(this.uniforms.u_time, performance.now() * 0.001);
+                    if (this.uniforms.u_camera) gl.uniform3fv(this.uniforms.u_camera, this.camera);
+                    if (this.uniforms.u_samples) gl.uniform1i(this.uniforms.u_samples, this.settings.samples);
+                    if (this.uniforms.u_bounces) gl.uniform1i(this.uniforms.u_bounces, this.settings.bounces);
+                    if (this.uniforms.u_resolution_scale) gl.uniform1f(this.uniforms.u_resolution_scale, this.settings.resolution);
+                    if (this.uniforms.u_sphere_count) gl.uniform1i(this.uniforms.u_sphere_count, this.spheres.length);
+
+                    // Physics uniforms
+                    if (this.uniforms.u_gravity) gl.uniform1f(this.uniforms.u_gravity, this.settings.gravity);
+                    if (this.uniforms.u_bounce_factor) gl.uniform1f(this.uniforms.u_bounce_factor, this.settings.bounceFactor);
+                    if (this.uniforms.u_air_resistance) gl.uniform1f(this.uniforms.u_air_resistance, this.settings.airResistance);
+                    if (this.uniforms.u_animation_speed) gl.uniform1f(this.uniforms.u_animation_speed, this.settings.animationSpeed);
+
+                    // Effect uniforms
+                    if (this.uniforms.u_trails) gl.uniform1i(this.uniforms.u_trails, this.settings.trails ? 1 : 0);
+                    if (this.uniforms.u_glow_effects) gl.uniform1i(this.uniforms.u_glow_effects, this.settings.glowEffects ? 1 : 0);
+
+                    // Sphere data
+                    for (let i = 0; i < Math.min(this.spheres.length, 16); i++) {
+                        const sphere = this.spheres[i];
+
+                        if (this.uniforms[`u_sphere_positions[${i}]`])
+                            gl.uniform3fv(this.uniforms[`u_sphere_positions[${i}]`], sphere.position);
+                        if (this.uniforms[`u_sphere_colors[${i}]`])
+                            gl.uniform3fv(this.uniforms[`u_sphere_colors[${i}]`], sphere.color);
+                        if (this.uniforms[`u_sphere_velocities[${i}]`])
+                            gl.uniform3fv(this.uniforms[`u_sphere_velocities[${i}]`], sphere.velocity);
+                        if (this.uniforms[`u_sphere_radii[${i}]`])
+                            gl.uniform1f(this.uniforms[`u_sphere_radii[${i}]`], sphere.radius);
+                        if (this.uniforms[`u_sphere_metallic[${i}]`])
+                            gl.uniform1f(this.uniforms[`u_sphere_metallic[${i}]`], sphere.metallic);
+                        if (this.uniforms[`u_sphere_emission[${i}]`])
+                            gl.uniform1f(this.uniforms[`u_sphere_emission[${i}]`], sphere.emission);
+                    }
+
+                    // Render
+                    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+                    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+                } catch (error) {
+                    console.error('Render error:', error);
+                }
+
+                // Update UI
+                this.updateSelectedObject();
+            }
+
+            animate() {
+                this.render();
+                this.updateStats();
+                requestAnimationFrame(() => this.animate());
+            }
+
+            // Vector utility functions
+            vectorLength(v) {
+                return Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+            }
+
+            normalizeVector(v) {
+                const len = this.vectorLength(v);
+                return len > 0 ? [v[0] / len, v[1] / len, v[2] / len] : [0, 0, 0];
+            }
+
+            subtractVectors(a, b) {
+                return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+            }
+
+            dotProduct(a, b) {
+                return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+            }
+        }
+
+        // UI Functions
+        function toggleSection(header) {
+            const content = header.nextElementSibling;
+            const arrow = header.querySelector('.toggle-arrow');
+            content.classList.toggle('expanded');
+            arrow.classList.toggle('expanded');
+        }
+
+        // Initialize
+        window.addEventListener('load', () => {
+            new InteractiveRayTracer();
+        });
+    </script>
+</body>
+</html>

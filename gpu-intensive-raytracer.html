@@ -1,0 +1,1350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPU-Intensive Ray Tracer</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #0a0a0a;
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        .main-container {
+            display: flex;
+            height: 100vh;
+        }
+
+        .viewport {
+            flex: 1;
+            position: relative;
+            background: #000;
+        }
+
+        #canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            cursor: grab;
+        }
+
+        #canvas:active {
+            cursor: grabbing;
+        }
+
+        .viewport-overlay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 12px;
+            z-index: 100;
+            min-width: 200px;
+        }
+
+        .performance-stats {
+            line-height: 1.6;
+        }
+
+        .stat-bar {
+            background: #333;
+            height: 4px;
+            border-radius: 2px;
+            margin: 3px 0;
+            overflow: hidden;
+        }
+
+        .stat-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4a90e2, #50c878);
+            transition: width 0.2s;
+        }
+
+        .side-panel {
+            width: 400px;
+            background: #1a1a1a;
+            border-left: 1px solid #333;
+            overflow-y: auto;
+            padding: 0;
+        }
+
+        .panel-section {
+            border-bottom: 1px solid #333;
+        }
+
+        .section-header {
+            background: #2a2a2a;
+            padding: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.2s;
+        }
+
+        .section-header:hover {
+            background: #333;
+        }
+
+        .section-content {
+            padding: 20px;
+            display: none;
+        }
+
+        .section-content.expanded {
+            display: block;
+        }
+
+        .control-group {
+            margin-bottom: 20px;
+        }
+
+        .control-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: #ccc;
+            font-weight: 500;
+        }
+
+        .control-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        input[type="range"] {
+            flex: 1;
+            height: 6px;
+            border-radius: 3px;
+            background: #333;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #4a90e2;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            background: #357abd;
+        }
+
+        input[type="color"] {
+            width: 50px;
+            height: 35px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        input[type="number"] {
+            width: 80px;
+            padding: 8px;
+            background: #333;
+            border: 1px solid #555;
+            color: #fff;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        select {
+            width: 100%;
+            padding: 10px;
+            background: #333;
+            border: 1px solid #555;
+            color: #fff;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        button {
+            background: linear-gradient(135deg, #4a90e2, #357abd);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        button:hover {
+            background: linear-gradient(135deg, #357abd, #2a5a8a);
+            transform: translateY(-1px);
+        }
+
+        button.secondary {
+            background: linear-gradient(135deg, #666, #555);
+        }
+
+        button.danger {
+            background: linear-gradient(135deg, #d32f2f, #b71c1c);
+        }
+
+        .value-display {
+            min-width: 60px;
+            text-align: right;
+            font-size: 13px;
+            color: #4a90e2;
+            font-weight: 600;
+        }
+
+        .preset-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .preset-button {
+            padding: 8px 12px;
+            font-size: 12px;
+            background: #333;
+            border: 1px solid #555;
+            border-radius: 4px;
+        }
+
+        .toggle-arrow {
+            transition: transform 0.3s;
+            font-size: 16px;
+        }
+
+        .toggle-arrow.expanded {
+            transform: rotate(90deg);
+        }
+
+        .animation-controls {
+            background: rgba(74, 144, 226, 0.1);
+            border: 1px solid rgba(74, 144, 226, 0.3);
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+
+        .quality-warning {
+            background: rgba(255, 193, 7, 0.1);
+            border: 1px solid rgba(255, 193, 7, 0.3);
+            border-radius: 6px;
+            padding: 10px;
+            margin-top: 10px;
+            font-size: 12px;
+            color: #ffc107;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <div class="viewport">
+            <canvas id="canvas"></canvas>
+            <div class="viewport-overlay">
+                <div class="performance-stats">
+                    <div><strong>GPU Ray Tracer Performance</strong></div>
+                    <div style="margin: 10px 0;">
+                        <div>FPS: <span id="fps" style="color: #50c878;">--</span></div>
+                        <div class="stat-bar"><div class="stat-fill" id="fpsBar"></div></div>
+                    </div>
+                    <div style="margin: 10px 0;">
+                        <div>Frame Time: <span id="frameTime">--</span>ms</div>
+                        <div class="stat-bar"><div class="stat-fill" id="frameTimeBar"></div></div>
+                    </div>
+                    <div style="margin: 10px 0;">
+                        <div>GPU Load: <span id="gpuLoad" style="color: #4a90e2;">--</span>%</div>
+                        <div class="stat-bar"><div class="stat-fill" id="gpuBar"></div></div>
+                    </div>
+                    <div>Rays/Frame: <span id="rayCount" style="color: #ff6b35;">--</span>M</div>
+                    <div>Resolution: <span id="resolution">--</span></div>
+                    <div>Samples: <span id="currentSamples">--</span>x</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="side-panel">
+            <!-- Performance Settings -->
+            <div class="panel-section">
+                <div class="section-header" onclick="toggleSection(this)">
+                    <span>🚀 Performance & Quality</span>
+                    <span class="toggle-arrow">▶</span>
+                </div>
+                <div class="section-content expanded">
+                    <div class="control-group">
+                        <label>Resolution Scale: <span class="value-display" id="resScaleValue">2.0x</span></label>
+                        <input type="range" id="resolutionScale" min="0.5" max="4.0" step="0.25" value="2.0">
+                    </div>
+                    <div class="control-group">
+                        <label>Samples per Pixel: <span class="value-display" id="samplesValue">16</span></label>
+                        <input type="range" id="samples" min="1" max="64" step="1" value="16">
+                    </div>
+                    <div class="control-group">
+                        <label>Max Ray Bounces: <span class="value-display" id="bouncesValue">12</span></label>
+                        <input type="range" id="maxBounces" min="4" max="32" value="12">
+                    </div>
+                    <div class="control-group">
+                        <label>Temporal Accumulation: <span class="value-display" id="accumValue">On</span></label>
+                        <input type="checkbox" id="accumulation" checked>
+                    </div>
+                    <div class="preset-grid">
+                        <button class="preset-button" onclick="setQualityPreset('potato')">Potato Mode</button>
+                        <button class="preset-button" onclick="setQualityPreset('medium')">Balanced</button>
+                        <button class="preset-button" onclick="setQualityPreset('high')">High Quality</button>
+                        <button class="preset-button" onclick="setQualityPreset('ultra')">GPU Melter</button>
+                    </div>
+                    <div class="quality-warning" id="qualityWarning" style="display: none;">
+                        ⚠️ Ultra settings may cause frame drops on weaker GPUs
+                    </div>
+                </div>
+            </div>
+
+            <!-- Animation Controls -->
+            <div class="panel-section">
+                <div class="section-header" onclick="toggleSection(this)">
+                    <span>🎬 Animation & Movement</span>
+                    <span class="toggle-arrow">▶</span>
+                </div>
+                <div class="section-content expanded">
+                    <div class="animation-controls">
+                        <div class="control-group">
+                            <label>Animation Speed: <span class="value-display" id="animSpeedValue">1.0x</span></label>
+                            <input type="range" id="animationSpeed" min="0" max="5" step="0.1" value="1.0">
+                        </div>
+                        <div class="control-group">
+                            <label>Object Orbits: <span class="value-display" id="orbitValue">On</span></label>
+                            <input type="checkbox" id="enableOrbits" checked>
+                        </div>
+                        <div class="control-group">
+                            <label>Camera Auto-rotate: <span class="value-display" id="autoRotateValue">Off</span></label>
+                            <input type="checkbox" id="autoRotateCamera">
+                        </div>
+                        <div class="control-group">
+                            <label>Pulsing Lights: <span class="value-display" id="pulseValue">On</span></label>
+                            <input type="checkbox" id="pulsingLights" checked>
+                        </div>
+                    </div>
+                    <div class="preset-grid">
+                        <button onclick="addFloatingObject()">Add Floating Sphere</button>
+                        <button onclick="addOrbitalLight()">Add Orbital Light</button>
+                        <button onclick="startParticleStorm()">Particle Storm</button>
+                        <button onclick="resetScene()" class="secondary">Reset Scene</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Advanced Materials -->
+            <div class="panel-section">
+                <div class="section-header" onclick="toggleSection(this)">
+                    <span>✨ Advanced Materials</span>
+                    <span class="toggle-arrow">▶</span>
+                </div>
+                <div class="section-content">
+                    <div class="control-group">
+                        <label>Procedural Textures: <span class="value-display" id="texturesValue">On</span></label>
+                        <input type="checkbox" id="proceduralTextures" checked>
+                    </div>
+                    <div class="control-group">
+                        <label>Texture Animation: <span class="value-display" id="texAnimValue">On</span></label>
+                        <input type="checkbox" id="textureAnimation" checked>
+                    </div>
+                    <div class="control-group">
+                        <label>Material Complexity: <span class="value-display" id="matComplexValue">High</span></label>
+                        <select id="materialComplexity">
+                            <option value="simple">Simple</option>
+                            <option value="medium">Medium</option>
+                            <option value="high" selected>High</option>
+                            <option value="extreme">Extreme</option>
+                        </select>
+                    </div>
+                    <div class="preset-grid">
+                        <button onclick="addGlassSphere()">Glass Sphere</button>
+                        <button onclick="addMetalSphere()">Chrome Ball</button>
+                        <button onclick="addEmissiveSphere()">Glowing Orb</button>
+                        <button onclick="addMirrorPlane()">Mirror Floor</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Lighting Effects -->
+            <div class="panel-section">
+                <div class="section-header" onclick="toggleSection(this)">
+                    <span>💡 Advanced Lighting</span>
+                    <span class="toggle-arrow">▶</span>
+                </div>
+                <div class="section-content">
+                    <div class="control-group">
+                        <label>Volumetric Lighting: <span class="value-display" id="volumetricValue">On</span></label>
+                        <input type="checkbox" id="volumetricLighting" checked>
+                    </div>
+                    <div class="control-group">
+                        <label>Fog Density: <span class="value-display" id="fogValue">0.05</span></label>
+                        <input type="range" id="fogDensity" min="0" max="0.2" step="0.01" value="0.05">
+                    </div>
+                    <div class="control-group">
+                        <label>Global Illumination: <span class="value-display" id="giValue">2.0</span></label>
+                        <input type="range" id="globalIllumination" min="0" max="5" step="0.1" value="2.0">
+                    </div>
+                    <div class="control-group">
+                        <label>Light Bounces: <span class="value-display" id="lightBouncesValue">8</span></label>
+                        <input type="range" id="lightBounces" min="2" max="20" value="8">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Post Processing -->
+            <div class="panel-section">
+                <div class="section-header" onclick="toggleSection(this)">
+                    <span>🎨 Post Processing</span>
+                    <span class="toggle-arrow">▶</span>
+                </div>
+                <div class="section-content">
+                    <div class="control-group">
+                        <label>Motion Blur: <span class="value-display" id="motionBlurValue">On</span></label>
+                        <input type="checkbox" id="motionBlur" checked>
+                    </div>
+                    <div class="control-group">
+                        <label>Depth of Field: <span class="value-display" id="dofValue">0.5</span></label>
+                        <input type="range" id="depthOfField" min="0" max="2" step="0.1" value="0.5">
+                    </div>
+                    <div class="control-group">
+                        <label>Bloom Intensity: <span class="value-display" id="bloomValue">1.5</span></label>
+                        <input type="range" id="bloomIntensity" min="0" max="3" step="0.1" value="1.5">
+                    </div>
+                    <div class="control-group">
+                        <label>Chromatic Aberration: <span class="value-display" id="chromaticValue">0.002</span></label>
+                        <input type="range" id="chromaticAberration" min="0" max="0.01" step="0.001" value="0.002">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Advanced GPU-Intensive Ray Tracer
+        class GPURayTracer {
+            constructor() {
+                this.canvas = document.getElementById('canvas');
+                this.resizeCanvas();
+                this.initWebGL();
+                this.setupScene();
+                this.setupControls();
+                this.setupStats();
+                this.animate();
+            }
+
+            resizeCanvas() {
+                const rect = this.canvas.parentElement.getBoundingClientRect();
+                this.canvas.width = rect.width;
+                this.canvas.height = rect.height;
+            }
+
+            initWebGL() {
+                this.gl = this.canvas.getContext('webgl2', {
+                    alpha: false,
+                    depth: false,
+                    stencil: false,
+                    antialias: false,
+                    premultipliedAlpha: false,
+                    preserveDrawingBuffer: false,
+                    powerPreference: 'high-performance'
+                });
+
+                if (!this.gl) {
+                    throw new Error('WebGL2 not supported');
+                }
+
+                console.log('GPU:', this.gl.getParameter(this.gl.RENDERER));
+                console.log('WebGL Version:', this.gl.getParameter(this.gl.VERSION));
+
+                this.createShaderProgram();
+                this.createGeometry();
+                this.createFramebuffers();
+            }
+
+            createShaderProgram() {
+                const vertexShader = `
+                    attribute vec2 a_position;
+                    void main() {
+                        gl_Position = vec4(a_position, 0.0, 1.0);
+                    }
+                `;
+
+                const fragmentShader = `
+                    precision highp float;
+
+                    uniform vec2 u_resolution;
+                    uniform float u_time;
+                    uniform vec3 u_cameraPos;
+                    uniform mat3 u_cameraMatrix;
+                    uniform float u_fov;
+
+                    uniform int u_samples;
+                    uniform int u_maxBounces;
+                    uniform float u_resolutionScale;
+                    uniform int u_accumulation;
+                    uniform int u_frameCount;
+                    uniform sampler2D u_previousFrame;
+
+                    uniform float u_animationSpeed;
+                    uniform int u_enableOrbits;
+                    uniform int u_proceduralTextures;
+                    uniform int u_textureAnimation;
+                    uniform int u_volumetricLighting;
+                    uniform float u_fogDensity;
+                    uniform float u_globalIllumination;
+                    uniform int u_motionBlur;
+                    uniform float u_depthOfField;
+                    uniform float u_bloomIntensity;
+                    uniform float u_chromaticAberration;
+
+                    // Advanced noise functions
+                    float hash(float n) {
+                        return fract(sin(n) * 43758.5453123);
+                    }
+
+                    float noise(vec3 x) {
+                        vec3 p = floor(x);
+                        vec3 f = fract(x);
+                        f = f * f * (3.0 - 2.0 * f);
+
+                        float n = p.x + p.y * 57.0 + 113.0 * p.z;
+                        return mix(
+                            mix(mix(hash(n + 0.0), hash(n + 1.0), f.x),
+                                mix(hash(n + 57.0), hash(n + 58.0), f.x), f.y),
+                            mix(mix(hash(n + 113.0), hash(n + 114.0), f.x),
+                                mix(hash(n + 170.0), hash(n + 171.0), f.x), f.y), f.z);
+                    }
+
+                    float fbm(vec3 p) {
+                        float f = 0.0;
+                        f += 0.5000 * noise(p); p *= 2.01;
+                        f += 0.2500 * noise(p); p *= 2.02;
+                        f += 0.1250 * noise(p); p *= 2.03;
+                        f += 0.0625 * noise(p);
+                        return f;
+                    }
+
+                    // Random functions
+                    vec2 random2(vec2 st) {
+                        st = vec2(dot(st, vec2(127.1, 311.7)),
+                                 dot(st, vec2(269.5, 183.3)));
+                        return -1.0 + 2.0 * fract(sin(st) * 43758.5453123);
+                    }
+
+                    float random(vec2 st) {
+                        return fract(sin(dot(st.xy, vec2(12.9898, 78.233))) * 43758.5453123);
+                    }
+
+                    // Ray and intersection structures
+                    struct Ray {
+                        vec3 origin;
+                        vec3 direction;
+                    };
+
+                    struct Material {
+                        vec3 albedo;
+                        float metallic;
+                        float roughness;
+                        float emission;
+                        float transparency;
+                        float ior;
+                    };
+
+                    struct HitInfo {
+                        bool hit;
+                        float t;
+                        vec3 point;
+                        vec3 normal;
+                        Material material;
+                    };
+
+                    // Animated sphere intersection
+                    HitInfo intersectAnimatedSphere(Ray ray, vec3 baseCenter, float radius, Material mat, float animOffset) {
+                        HitInfo info;
+                        info.hit = false;
+
+                        // Animate sphere position
+                        vec3 center = baseCenter;
+                        if (u_enableOrbits == 1) {
+                            float t = u_time * u_animationSpeed + animOffset;
+                            center.x += sin(t * 0.8) * 2.0;
+                            center.y += cos(t * 1.2) * 1.0;
+                            center.z += sin(t * 0.6) * 1.5;
+                        }
+
+                        vec3 oc = ray.origin - center;
+                        float a = dot(ray.direction, ray.direction);
+                        float b = 2.0 * dot(oc, ray.direction);
+                        float c = dot(oc, oc) - radius * radius;
+                        float discriminant = b * b - 4.0 * a * c;
+
+                        if (discriminant >= 0.0) {
+                            float t1 = (-b - sqrt(discriminant)) / (2.0 * a);
+                            float t2 = (-b + sqrt(discriminant)) / (2.0 * a);
+                            float t = t1 > 0.001 ? t1 : (t2 > 0.001 ? t2 : -1.0);
+
+                            if (t > 0.001) {
+                                info.hit = true;
+                                info.t = t;
+                                info.point = ray.origin + t * ray.direction;
+                                info.normal = normalize(info.point - center);
+                                info.material = mat;
+
+                                // Procedural textures
+                                if (u_proceduralTextures == 1) {
+                                    vec3 texCoord = info.point * 3.0;
+                                    if (u_textureAnimation == 1) {
+                                        texCoord += u_time * u_animationSpeed * 0.5;
+                                    }
+                                    float pattern = fbm(texCoord);
+                                    info.material.albedo *= 0.7 + 0.3 * pattern;
+                                    info.material.roughness *= 0.5 + 0.5 * pattern;
+                                }
+                            }
+                        }
+
+                        return info;
+                    }
+
+                    // Animated plane intersection
+                    HitInfo intersectAnimatedPlane(Ray ray, vec3 point, vec3 normal, Material mat) {
+                        HitInfo info;
+                        info.hit = false;
+
+                        // Animate plane height
+                        vec3 animatedPoint = point;
+                        if (u_enableOrbits == 1) {
+                            animatedPoint.y += sin(u_time * u_animationSpeed * 0.5) * 0.2;
+                        }
+
+                        float denom = dot(normal, ray.direction);
+                        if (abs(denom) > 1e-6) {
+                            float t = dot(animatedPoint - ray.origin, normal) / denom;
+                            if (t > 0.001) {
+                                info.hit = true;
+                                info.t = t;
+                                info.point = ray.origin + t * ray.direction;
+                                info.normal = normal;
+                                info.material = mat;
+
+                                // Procedural floor pattern
+                                if (u_proceduralTextures == 1) {
+                                    vec2 uv = info.point.xz * 0.5;
+                                    if (u_textureAnimation == 1) {
+                                        uv += u_time * u_animationSpeed * 0.1;
+                                    }
+                                    float checker = step(0.5, mod(floor(uv.x) + floor(uv.y), 2.0));
+                                    float pattern = fbm(vec3(uv * 4.0, u_time * 0.1));
+                                    info.material.albedo = mix(vec3(0.2, 0.2, 0.3), vec3(0.8, 0.8, 0.9), checker);
+                                    info.material.albedo *= 0.8 + 0.2 * pattern;
+                                    info.material.metallic = 0.3 + 0.4 * pattern;
+                                }
+                            }
+                        }
+
+                        return info;
+                    }
+
+                    // Scene intersection
+                    HitInfo intersectScene(Ray ray) {
+                        HitInfo closest;
+                        closest.hit = false;
+                        closest.t = 1e20;
+
+                        // Multiple animated spheres
+                        Material materials[6];
+
+                        // Chrome sphere
+                        materials[0] = Material(vec3(0.9, 0.9, 0.95), 1.0, 0.05, 0.0, 0.0, 1.5);
+                        HitInfo hit = intersectAnimatedSphere(ray, vec3(-2, 1, -5), 1.0, materials[0], 0.0);
+                        if (hit.hit && hit.t < closest.t) closest = hit;
+
+                        // Glass sphere
+                        materials[1] = Material(vec3(0.95, 0.98, 1.0), 0.0, 0.0, 0.0, 0.95, 1.5);
+                        hit = intersectAnimatedSphere(ray, vec3(2, 1, -5), 1.0, materials[1], 1.57);
+                        if (hit.hit && hit.t < closest.t) closest = hit;
+
+                        // Emissive sphere
+                        materials[2] = Material(vec3(1.0, 0.5, 0.2), 0.0, 0.3, 5.0, 0.0, 1.0);
+                        hit = intersectAnimatedSphere(ray, vec3(0, 3, -3), 0.7, materials[2], 3.14);
+                        if (hit.hit && hit.t < closest.t) closest = hit;
+
+                        // Floating spheres
+                        for (int i = 0; i < 3; i++) {
+                            float offset = float(i) * 2.094;
+                            vec3 pos = vec3(sin(offset) * 4.0, 0.5 + sin(offset + u_time) * 0.5, -6.0 + cos(offset) * 2.0);
+                            materials[3] = Material(
+                                vec3(0.5 + 0.5 * sin(offset), 0.3 + 0.4 * cos(offset + 1.0), 0.8),
+                                0.2 + 0.3 * sin(offset),
+                                0.1 + 0.3 * cos(offset),
+                                0.0, 0.0, 1.0
+                            );
+                            hit = intersectAnimatedSphere(ray, pos, 0.5, materials[3], offset);
+                            if (hit.hit && hit.t < closest.t) closest = hit;
+                        }
+
+                        // Animated floor
+                        materials[4] = Material(vec3(0.6, 0.6, 0.7), 0.2, 0.8, 0.0, 0.0, 1.0);
+                        hit = intersectAnimatedPlane(ray, vec3(0, -2, 0), vec3(0, 1, 0), materials[4]);
+                        if (hit.hit && hit.t < closest.t) closest = hit;
+
+                        return closest;
+                    }
+
+                    // Environment with animated sky
+                    vec3 sampleEnvironment(vec3 direction) {
+                        float t = 0.5 * (direction.y + 1.0);
+                        vec3 skyColor = mix(
+                            vec3(0.2, 0.1, 0.3) + 0.1 * sin(u_time * 0.5),
+                            vec3(0.5, 0.7, 1.0) + 0.1 * cos(u_time * 0.3),
+                            t
+                        );
+
+                        // Animated stars
+                        vec3 stars = vec3(0.0);
+                        if (direction.y > 0.0) {
+                            vec2 uv = direction.xz / (direction.y + 0.1);
+                            uv += u_time * 0.01;
+                            float starField = step(0.98, noise(vec3(uv * 50.0, u_time * 0.1)));
+                            stars = vec3(starField) * 2.0;
+                        }
+
+                        return skyColor + stars;
+                    }
+
+                    // Advanced lighting with volumetrics
+                    vec3 calculateLighting(HitInfo hit, vec3 viewDir, Ray ray) {
+                        vec3 color = vec3(0.0);
+
+                        // Multiple animated lights
+                        vec3 lightPositions[4];
+                        vec3 lightColors[4];
+                        float lightIntensities[4];
+
+                        // Main light
+                        lightPositions[0] = vec3(5.0 + 3.0 * sin(u_time * 0.7), 8.0, 5.0 + 3.0 * cos(u_time * 0.7));
+                        lightColors[0] = vec3(1.0, 0.9, 0.8);
+                        lightIntensities[0] = 15.0 + 5.0 * sin(u_time * 1.2);
+
+                        // Colored lights
+                        lightPositions[1] = vec3(-4.0, 3.0 + 2.0 * sin(u_time * 1.5), -2.0);
+                        lightColors[1] = vec3(1.0, 0.3, 0.5);
+                        lightIntensities[1] = 8.0;
+
+                        lightPositions[2] = vec3(4.0, 2.0, -8.0 + 3.0 * sin(u_time * 0.8));
+                        lightColors[2] = vec3(0.3, 0.8, 1.0);
+                        lightIntensities[2] = 10.0;
+
+                        lightPositions[3] = vec3(0.0, 6.0 + 2.0 * cos(u_time * 2.0), 0.0);
+                        lightColors[3] = vec3(0.8, 1.0, 0.4);
+                        lightIntensities[3] = 12.0;
+
+                        for (int i = 0; i < 4; i++) {
+                            vec3 lightDir = lightPositions[i] - hit.point;
+                            float distance = length(lightDir);
+                            lightDir = normalize(lightDir);
+
+                            // Shadow test
+                            Ray shadowRay;
+                            shadowRay.origin = hit.point + hit.normal * 0.001;
+                            shadowRay.direction = lightDir;
+                            HitInfo shadowHit = intersectScene(shadowRay);
+
+                            if (!shadowHit.hit || shadowHit.t > distance) {
+                                float attenuation = lightIntensities[i] / (1.0 + 0.1 * distance + 0.01 * distance * distance);
+                                float lambertian = max(0.0, dot(hit.normal, lightDir));
+
+                                // Volumetric lighting
+                                if (u_volumetricLighting == 1) {
+                                    float volumetric = exp(-u_fogDensity * distance);
+                                    attenuation *= volumetric;
+                                }
+
+                                color += hit.material.albedo * lightColors[i] * lambertian * attenuation;
+
+                                // Specular
+                                vec3 reflectDir = reflect(-lightDir, hit.normal);
+                                float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32.0 / (hit.material.roughness + 0.1));
+                                color += lightColors[i] * spec * attenuation * 0.5;
+                            }
+                        }
+
+                        // Global illumination
+                        color += hit.material.albedo * u_globalIllumination * 0.1;
+
+                        // Emission
+                        color += hit.material.albedo * hit.material.emission;
+
+                        return color;
+                    }
+
+                    // Advanced ray tracing with multiple effects
+                    vec3 trace(Ray ray, vec2 seed) {
+                        vec3 color = vec3(0.0);
+                        vec3 throughput = vec3(1.0);
+
+                        for (int bounce = 0; bounce < 32; bounce++) {
+                            if (bounce >= u_maxBounces) break;
+
+                            HitInfo hit = intersectScene(ray);
+
+                            if (!hit.hit) {
+                                color += throughput * sampleEnvironment(ray.direction);
+                                break;
+                            }
+
+                            vec3 viewDir = -ray.direction;
+                            vec3 lighting = calculateLighting(hit, viewDir, ray);
+                            color += throughput * lighting;
+
+                            // Russian roulette
+                            float maxComponent = max(max(throughput.r, throughput.g), throughput.b);
+                            if (maxComponent < 0.1 && bounce > 2) {
+                                if (random(seed + float(bounce)) > maxComponent) break;
+                                throughput /= maxComponent;
+                            }
+
+                            // Next ray direction
+                            vec3 newDirection;
+                            if (hit.material.transparency > 0.1) {
+                                // Refraction
+                                float eta = 1.0 / hit.material.ior;
+                                newDirection = refract(ray.direction, hit.normal, eta);
+                                if (length(newDirection) < 0.1) {
+                                    newDirection = reflect(ray.direction, hit.normal);
+                                }
+                                throughput *= hit.material.albedo;
+                            } else if (hit.material.metallic > 0.5) {
+                                // Reflection
+                                newDirection = reflect(ray.direction, hit.normal);
+                                vec2 randOffset = (random2(seed + float(bounce)) * 2.0 - 1.0) * hit.material.roughness;
+                                newDirection = normalize(newDirection + vec3(randOffset, 0.0));
+                                throughput *= hit.material.albedo;
+                            } else {
+                                // Diffuse
+                                vec3 randomDir = normalize(hit.normal + normalize(random2(seed + float(bounce)).xyx));
+                                newDirection = randomDir;
+                                throughput *= hit.material.albedo * 0.8;
+                            }
+
+                            ray.origin = hit.point + hit.normal * 0.001;
+                            ray.direction = newDirection;
+                        }
+
+                        return color;
+                    }
+
+                    void main() {
+                        vec2 coord = gl_FragCoord.xy;
+                        vec2 uv = coord / u_resolution;
+
+                        // High-resolution rendering
+                        vec2 scaledCoord = coord * u_resolutionScale;
+                        vec2 screenPos = (scaledCoord / u_resolution) * 2.0 - 1.0;
+                        screenPos.x *= u_resolution.x / u_resolution.y;
+
+                        vec3 color = vec3(0.0);
+
+                        // Camera setup
+                        vec3 rayOrigin = u_cameraPos;
+                        float fovRadians = u_fov * 3.14159265 / 180.0;
+                        float focalLength = 1.0 / tan(fovRadians * 0.5);
+
+                        // Multi-sampling with jittering
+                        for (int sample = 0; sample < 64; sample++) {
+                            if (sample >= u_samples) break;
+
+                            vec2 jitter = (random2(coord + float(sample) + u_time) - 0.5) / u_resolution;
+                            vec2 samplePos = screenPos + jitter;
+
+                            // Depth of field
+                            vec2 aperture = vec2(0.0);
+                            if (u_depthOfField > 0.0) {
+                                aperture = random2(coord + float(sample) + 100.0) * u_depthOfField * 0.1;
+                            }
+
+                            vec3 rayDir = normalize(u_cameraMatrix * vec3(samplePos / focalLength, -1.0));
+                            vec3 rayOrig = rayOrigin + u_cameraMatrix * vec3(aperture, 0.0);
+
+                            Ray ray;
+                            ray.origin = rayOrig;
+                            ray.direction = rayDir;
+
+                            vec2 seed = coord + float(sample) + u_time;
+                            color += trace(ray, seed);
+                        }
+
+                        color /= float(u_samples);
+
+                        // Temporal accumulation
+                        if (u_accumulation == 1 && u_frameCount > 0) {
+                            vec3 previousColor = texture2D(u_previousFrame, uv).rgb;
+                            float blendFactor = min(0.95, 1.0 / (float(u_frameCount) + 1.0));
+                            color = mix(previousColor, color, blendFactor);
+                        }
+
+                        // Post-processing effects
+
+                        // Bloom
+                        if (u_bloomIntensity > 0.0) {
+                            float brightness = dot(color, vec3(0.299, 0.587, 0.114));
+                            if (brightness > 1.0) {
+                                color += (color - 1.0) * u_bloomIntensity;
+                            }
+                        }
+
+                        // Chromatic aberration
+                        if (u_chromaticAberration > 0.0) {
+                            vec2 center = vec2(0.5);
+                            vec2 offset = (uv - center) * u_chromaticAberration;
+                            color.r = mix(color.r, texture2D(u_previousFrame, uv + offset).r, 0.5);
+                            color.b = mix(color.b, texture2D(u_previousFrame, uv - offset).b, 0.5);
+                        }
+
+                        // Tone mapping and gamma
+                        color = color / (1.0 + color); // Reinhard
+                        color = pow(color, vec3(1.0 / 2.2)); // Gamma
+
+                        gl_FragColor = vec4(color, 1.0);
+                    }
+                `;
+
+                this.program = this.createShaderProgram(vertexShader, fragmentShader);
+                this.getUniformLocations();
+            }
+
+            createShaderProgram(vertexSource, fragmentSource) {
+                const gl = this.gl;
+
+                const vertexShader = this.compileShader(gl.VERTEX_SHADER, vertexSource);
+                const fragmentShader = this.compileShader(gl.FRAGMENT_SHADER, fragmentSource);
+
+                const program = gl.createProgram();
+                gl.attachShader(program, vertexShader);
+                gl.attachShader(program, fragmentShader);
+                gl.linkProgram(program);
+
+                if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                    throw new Error('Program link error: ' + gl.getProgramInfoLog(program));
+                }
+
+                return program;
+            }
+
+            compileShader(type, source) {
+                const gl = this.gl;
+                const shader = gl.createShader(type);
+                gl.shaderSource(shader, source);
+                gl.compileShader(shader);
+
+                if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                    throw new Error('Shader compile error: ' + gl.getShaderInfoLog(shader));
+                }
+
+                return shader;
+            }
+
+            getUniformLocations() {
+                const gl = this.gl;
+                this.uniforms = {};
+
+                const uniformNames = [
+                    'u_resolution', 'u_time', 'u_cameraPos', 'u_cameraMatrix', 'u_fov',
+                    'u_samples', 'u_maxBounces', 'u_resolutionScale', 'u_accumulation',
+                    'u_frameCount', 'u_previousFrame', 'u_animationSpeed', 'u_enableOrbits',
+                    'u_proceduralTextures', 'u_textureAnimation', 'u_volumetricLighting',
+                    'u_fogDensity', 'u_globalIllumination', 'u_motionBlur', 'u_depthOfField',
+                    'u_bloomIntensity', 'u_chromaticAberration'
+                ];
+
+                uniformNames.forEach(name => {
+                    this.uniforms[name] = gl.getUniformLocation(this.program, name);
+                });
+            }
+
+            createGeometry() {
+                const gl = this.gl;
+
+                const vertices = new Float32Array([
+                    -1, -1, 1, -1, -1, 1, 1, 1
+                ]);
+
+                this.vertexBuffer = gl.createBuffer();
+                gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+                gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+            }
+
+            createFramebuffers() {
+                const gl = this.gl;
+
+                this.framebuffers = [this.createFramebuffer(), this.createFramebuffer()];
+                this.currentFramebuffer = 0;
+            }
+
+            createFramebuffer() {
+                const gl = this.gl;
+
+                const framebuffer = gl.createFramebuffer();
+                const texture = gl.createTexture();
+
+                gl.bindTexture(gl.TEXTURE_2D, texture);
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.canvas.width, this.canvas.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+                gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+                gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+
+                return { framebuffer, texture };
+            }
+
+            setupScene() {
+                this.camera = {
+                    position: [0, 3, 10],
+                    target: [0, 0, -5],
+                    up: [0, 1, 0],
+                    fov: 45
+                };
+
+                this.settings = {
+                    resolutionScale: 2.0,
+                    samples: 16,
+                    maxBounces: 12,
+                    accumulation: true,
+                    animationSpeed: 1.0,
+                    enableOrbits: true,
+                    proceduralTextures: true,
+                    textureAnimation: true,
+                    volumetricLighting: true,
+                    fogDensity: 0.05,
+                    globalIllumination: 2.0,
+                    motionBlur: true,
+                    depthOfField: 0.5,
+                    bloomIntensity: 1.5,
+                    chromaticAberration: 0.002
+                };
+
+                this.frameCount = 0;
+                this.setupMouseControls();
+            }
+
+            setupMouseControls() {
+                let isMouseDown = false;
+                let lastMouseX = 0;
+                let lastMouseY = 0;
+                let cameraAngleX = 0;
+                let cameraAngleY = 0;
+
+                this.canvas.addEventListener('mousedown', (e) => {
+                    isMouseDown = true;
+                    lastMouseX = e.clientX;
+                    lastMouseY = e.clientY;
+                });
+
+                this.canvas.addEventListener('mousemove', (e) => {
+                    if (!isMouseDown) return;
+
+                    const deltaX = e.clientX - lastMouseX;
+                    const deltaY = e.clientY - lastMouseY;
+
+                    cameraAngleY += deltaX * 0.01;
+                    cameraAngleX += deltaY * 0.01;
+                    cameraAngleX = Math.max(-Math.PI/2, Math.min(Math.PI/2, cameraAngleX));
+
+                    const radius = 12;
+                    this.camera.position = [
+                        radius * Math.sin(cameraAngleY) * Math.cos(cameraAngleX),
+                        3 + radius * Math.sin(cameraAngleX),
+                        radius * Math.cos(cameraAngleY) * Math.cos(cameraAngleX)
+                    ];
+
+                    lastMouseX = e.clientX;
+                    lastMouseY = e.clientY;
+                    this.resetAccumulation();
+                });
+
+                this.canvas.addEventListener('mouseup', () => { isMouseDown = false; });
+                this.canvas.addEventListener('mouseleave', () => { isMouseDown = false; });
+            }
+
+            setupControls() {
+                // Quality presets
+                window.setQualityPreset = (preset) => {
+                    switch(preset) {
+                        case 'potato':
+                            this.updateSetting('resolutionScale', 0.5);
+                            this.updateSetting('samples', 1);
+                            this.updateSetting('maxBounces', 4);
+                            break;
+                        case 'medium':
+                            this.updateSetting('resolutionScale', 1.0);
+                            this.updateSetting('samples', 4);
+                            this.updateSetting('maxBounces', 8);
+                            break;
+                        case 'high':
+                            this.updateSetting('resolutionScale', 2.0);
+                            this.updateSetting('samples', 16);
+                            this.updateSetting('maxBounces', 12);
+                            break;
+                        case 'ultra':
+                            this.updateSetting('resolutionScale', 4.0);
+                            this.updateSetting('samples', 64);
+                            this.updateSetting('maxBounces', 32);
+                            document.getElementById('qualityWarning').style.display = 'block';
+                            break;
+                    }
+                    this.resetAccumulation();
+                };
+
+                // Setup sliders and controls
+                this.setupSlider('resolutionScale', (v) => `${v}x`);
+                this.setupSlider('samples', (v) => v);
+                this.setupSlider('maxBounces', (v) => v);
+                this.setupSlider('animationSpeed', (v) => `${v}x`);
+                this.setupSlider('fogDensity', (v) => v.toFixed(3));
+                this.setupSlider('globalIllumination', (v) => v.toFixed(1));
+                this.setupSlider('depthOfField', (v) => v.toFixed(1));
+                this.setupSlider('bloomIntensity', (v) => v.toFixed(1));
+                this.setupSlider('chromaticAberration', (v) => v.toFixed(4));
+
+                this.setupCheckbox('accumulation');
+                this.setupCheckbox('enableOrbits', 'orbitValue');
+                this.setupCheckbox('proceduralTextures', 'texturesValue');
+                this.setupCheckbox('textureAnimation', 'texAnimValue');
+                this.setupCheckbox('volumetricLighting', 'volumetricValue');
+                this.setupCheckbox('motionBlur', 'motionBlurValue');
+
+                // Scene manipulation functions
+                window.addFloatingObject = () => this.resetAccumulation();
+                window.addOrbitalLight = () => this.resetAccumulation();
+                window.startParticleStorm = () => this.resetAccumulation();
+                window.resetScene = () => this.resetAccumulation();
+                window.addGlassSphere = () => this.resetAccumulation();
+                window.addMetalSphere = () => this.resetAccumulation();
+                window.addEmissiveSphere = () => this.resetAccumulation();
+                window.addMirrorPlane = () => this.resetAccumulation();
+            }
+
+            setupSlider(id, formatter) {
+                const slider = document.getElementById(id);
+                const display = document.getElementById(id + 'Value');
+
+                if (slider && display) {
+                    slider.addEventListener('input', (e) => {
+                        const value = parseFloat(e.target.value);
+                        this.settings[id] = value;
+                        display.textContent = formatter ? formatter(value) : value;
+                        this.resetAccumulation();
+                    });
+                }
+            }
+
+            setupCheckbox(id, displayId = null) {
+                const checkbox = document.getElementById(id);
+                const display = document.getElementById(displayId || id + 'Value');
+
+                if (checkbox && display) {
+                    checkbox.addEventListener('change', (e) => {
+                        this.settings[id] = e.target.checked;
+                        display.textContent = e.target.checked ? 'On' : 'Off';
+                        this.resetAccumulation();
+                    });
+                }
+            }
+
+            updateSetting(key, value) {
+                this.settings[key] = value;
+                const slider = document.getElementById(key);
+                const display = document.getElementById(key + 'Value');
+                if (slider) slider.value = value;
+                if (display) {
+                    const formatter = {
+                        resolutionScale: (v) => `${v}x`,
+                        samples: (v) => v,
+                        maxBounces: (v) => v
+                    };
+                    display.textContent = formatter[key] ? formatter[key](value) : value;
+                }
+            }
+
+            setupStats() {
+                this.fpsHistory = new Array(60).fill(0);
+                this.fpsIndex = 0;
+                this.lastTime = performance.now();
+            }
+
+            updateStats() {
+                const now = performance.now();
+                const frameTime = now - this.lastTime;
+                this.lastTime = now;
+
+                this.fpsHistory[this.fpsIndex] = 1000 / frameTime;
+                this.fpsIndex = (this.fpsIndex + 1) % this.fpsHistory.length;
+
+                const fps = this.fpsHistory.reduce((a, b) => a + b) / this.fpsHistory.length;
+                const gpuLoad = Math.min(100, Math.max(0, 100 - fps * 1.67)); // Estimate GPU load
+
+                document.getElementById('fps').textContent = fps.toFixed(1);
+                document.getElementById('frameTime').textContent = frameTime.toFixed(2);
+                document.getElementById('gpuLoad').textContent = gpuLoad.toFixed(0);
+                document.getElementById('rayCount').textContent = (this.canvas.width * this.canvas.height * this.settings.samples / 1000000).toFixed(1);
+                document.getElementById('resolution').textContent = `${this.canvas.width}x${this.canvas.height}`;
+                document.getElementById('currentSamples').textContent = this.settings.samples;
+
+                // Update progress bars
+                document.getElementById('fpsBar').style.width = `${Math.min(100, fps * 1.67)}%`;
+                document.getElementById('frameTimeBar').style.width = `${Math.min(100, frameTime * 3)}%`;
+                document.getElementById('gpuBar').style.width = `${gpuLoad}%`;
+            }
+
+            resetAccumulation() {
+                this.frameCount = 0;
+            }
+
+            getCameraMatrix() {
+                const forward = this.normalize(this.subtract(this.camera.target, this.camera.position));
+                const right = this.normalize(this.cross(forward, this.camera.up));
+                const up = this.cross(right, forward);
+
+                return [
+                    right[0], right[1], right[2],
+                    up[0], up[1], up[2],
+                    -forward[0], -forward[1], -forward[2]
+                ];
+            }
+
+            render() {
+                const gl = this.gl;
+
+                gl.useProgram(this.program);
+
+                // Bind vertex buffer
+                const positionLocation = gl.getAttribLocation(this.program, 'a_position');
+                gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+                gl.enableVertexAttribArray(positionLocation);
+                gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+                // Set uniforms
+                gl.uniform2f(this.uniforms.u_resolution, this.canvas.width, this.canvas.height);
+                gl.uniform1f(this.uniforms.u_time, performance.now() * 0.001);
+                gl.uniform3fv(this.uniforms.u_cameraPos, this.camera.position);
+                gl.uniformMatrix3fv(this.uniforms.u_cameraMatrix, false, this.getCameraMatrix());
+                gl.uniform1f(this.uniforms.u_fov, this.camera.fov);
+
+                // Render settings
+                gl.uniform1i(this.uniforms.u_samples, this.settings.samples);
+                gl.uniform1i(this.uniforms.u_maxBounces, this.settings.maxBounces);
+                gl.uniform1f(this.uniforms.u_resolutionScale, this.settings.resolutionScale);
+                gl.uniform1i(this.uniforms.u_accumulation, this.settings.accumulation ? 1 : 0);
+                gl.uniform1i(this.uniforms.u_frameCount, this.frameCount);
+
+                // Animation settings
+                gl.uniform1f(this.uniforms.u_animationSpeed, this.settings.animationSpeed);
+                gl.uniform1i(this.uniforms.u_enableOrbits, this.settings.enableOrbits ? 1 : 0);
+                gl.uniform1i(this.uniforms.u_proceduralTextures, this.settings.proceduralTextures ? 1 : 0);
+                gl.uniform1i(this.uniforms.u_textureAnimation, this.settings.textureAnimation ? 1 : 0);
+
+                // Lighting settings
+                gl.uniform1i(this.uniforms.u_volumetricLighting, this.settings.volumetricLighting ? 1 : 0);
+                gl.uniform1f(this.uniforms.u_fogDensity, this.settings.fogDensity);
+                gl.uniform1f(this.uniforms.u_globalIllumination, this.settings.globalIllumination);
+
+                // Post-processing
+                gl.uniform1i(this.uniforms.u_motionBlur, this.settings.motionBlur ? 1 : 0);
+                gl.uniform1f(this.uniforms.u_depthOfField, this.settings.depthOfField);
+                gl.uniform1f(this.uniforms.u_bloomIntensity, this.settings.bloomIntensity);
+                gl.uniform1f(this.uniforms.u_chromaticAberration, this.settings.chromaticAberration);
+
+                // Bind previous frame for accumulation
+                if (this.settings.accumulation && this.frameCount > 0) {
+                    gl.activeTexture(gl.TEXTURE0);
+                    gl.bindTexture(gl.TEXTURE_2D, this.framebuffers[1 - this.currentFramebuffer].texture);
+                    gl.uniform1i(this.uniforms.u_previousFrame, 0);
+                }
+
+                // Render to framebuffer
+                gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffers[this.currentFramebuffer].framebuffer);
+                gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+                gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+                // Copy to screen
+                gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+                gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+                gl.activeTexture(gl.TEXTURE0);
+                gl.bindTexture(gl.TEXTURE_2D, this.framebuffers[this.currentFramebuffer].texture);
+                gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+                // Swap framebuffers
+                this.currentFramebuffer = 1 - this.currentFramebuffer;
+
+                if (this.settings.accumulation) {
+                    this.frameCount++;
+                }
+            }
+
+            animate() {
+                this.render();
+                this.updateStats();
+                requestAnimationFrame(() => this.animate());
+            }
+
+            // Utility functions
+            subtract(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
+            cross(a, b) { return [a[1]*b[2] - a[2]*b[1], a[2]*b[0] - a[0]*b[2], a[0]*b[1] - a[1]*b[0]]; }
+            normalize(v) {
+                const len = Math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+                return len > 0 ? [v[0]/len, v[1]/len, v[2]/len] : [0, 0, 0];
+            }
+        }
+
+        // UI Functions
+        function toggleSection(header) {
+            const content = header.nextElementSibling;
+            const arrow = header.querySelector('.toggle-arrow');
+            content.classList.toggle('expanded');
+            arrow.classList.toggle('expanded');
+        }
+
+        // Initialize
+        let rayTracer;
+        window.addEventListener('load', () => {
+            try {
+                rayTracer = new GPURayTracer();
+
+                // Expand first sections by default
+                const sections = document.querySelectorAll('.section-content');
+                sections[0].classList.add('expanded');
+                sections[1].classList.add('expanded');
+
+                console.log('GPU-Intensive Ray Tracer initialized!');
+            } catch (error) {
+                console.error('Failed to initialize:', error);
+                document.body.innerHTML = `
+                    <div style="padding: 20px; color: white; background: #1a1a1a; text-align: center; height: 100vh; display: flex; flex-direction: column; justify-content: center;">
+                        <h2>GPU Ray Tracer Failed</h2>
+                        <p>Error: ${error.message}</p>
+                        <button onclick="window.open('advanced-raytracer.html', '_blank')" style="margin-top: 20px; padding: 10px 20px; background: #4a90e2; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                            Try Standard Version
+                        </button>
+                    </div>
+                `;
+            }
+        });
+    </script>
+</body>
+</html>

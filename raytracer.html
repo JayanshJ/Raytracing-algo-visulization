@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ray Tracer</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #1a1a1a;
+            color: white;
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+        }
+        .canvas-container {
+            flex: 1;
+        }
+        .controls {
+            width: 300px;
+            background: #2a2a2a;
+            padding: 20px;
+            border-radius: 8px;
+            height: fit-content;
+        }
+        .control-group {
+            margin-bottom: 20px;
+        }
+        .control-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+        .control-group input[type="range"] {
+            width: 100%;
+            margin-bottom: 5px;
+        }
+        .control-group input[type="color"] {
+            width: 100%;
+            height: 30px;
+            border: none;
+            border-radius: 4px;
+        }
+        .value-display {
+            font-size: 12px;
+            color: #ccc;
+        }
+        button {
+            background: #4a90e2;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 10px;
+        }
+        button:hover {
+            background: #357abd;
+        }
+        canvas {
+            border: 1px solid #555;
+            background: black;
+        }
+        h3 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            color: #4a90e2;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="canvas-container">
+            <canvas id="canvas" width="800" height="600"></canvas>
+            <div style="margin-top: 10px;">
+                <div id="renderTime">Render time: --</div>
+                <div style="font-size: 12px; color: #ccc; margin-top: 5px;">
+                    Click and drag to rotate camera
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <h3>Ray Tracer Controls</h3>
+
+            <div class="control-group">
+                <label>Sphere Color</label>
+                <input type="color" id="sphereColor" value="#ff4444">
+            </div>
+
+            <div class="control-group">
+                <label>Sphere Radius: <span class="value-display" id="radiusValue">1.0</span></label>
+                <input type="range" id="sphereRadius" min="0.5" max="3.0" step="0.1" value="1.0">
+            </div>
+
+            <div class="control-group">
+                <label>Sphere Material</label>
+                <select id="sphereMaterial" style="width: 100%; padding: 8px; background: #333; color: white; border: 1px solid #555;">
+                    <option value="diffuse">Diffuse</option>
+                    <option value="metal">Metal</option>
+                    <option value="glass">Glass</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label>Reflectivity: <span class="value-display" id="reflectivityValue">0.8</span></label>
+                <input type="range" id="reflectivity" min="0" max="1" step="0.1" value="0.8">
+            </div>
+
+            <div class="control-group">
+                <label>Light Intensity: <span class="value-display" id="lightIntensityValue">1.0</span></label>
+                <input type="range" id="lightIntensity" min="0.1" max="3.0" step="0.1" value="1.0">
+            </div>
+
+            <div class="control-group">
+                <label>Ambient Light: <span class="value-display" id="ambientValue">0.1</span></label>
+                <input type="range" id="ambientLight" min="0" max="0.5" step="0.05" value="0.1">
+            </div>
+
+            <div class="control-group">
+                <label>Sky Color</label>
+                <input type="color" id="skyColor" value="#87ceeb">
+            </div>
+
+            <div class="control-group">
+                <label>Ground Color</label>
+                <input type="color" id="groundColor" value="#8b4513">
+            </div>
+
+            <div class="control-group">
+                <label>Max Bounces: <span class="value-display" id="maxBouncesValue">5</span></label>
+                <input type="range" id="maxBounces" min="1" max="10" step="1" value="5">
+            </div>
+
+            <div class="control-group">
+                <label>Samples per Pixel: <span class="value-display" id="samplesValue">1</span></label>
+                <input type="range" id="samples" min="1" max="16" step="1" value="1">
+            </div>
+
+            <button id="renderBtn">Render</button>
+            <button id="resetCamera">Reset Camera</button>
+        </div>
+    </div>
+
+    <script>
+        class Vec3 {
+            constructor(x = 0, y = 0, z = 0) {
+                this.x = x;
+                this.y = y;
+                this.z = z;
+            }
+
+            add(v) {
+                return new Vec3(this.x + v.x, this.y + v.y, this.z + v.z);
+            }
+
+            sub(v) {
+                return new Vec3(this.x - v.x, this.y - v.y, this.z - v.z);
+            }
+
+            mul(scalar) {
+                return new Vec3(this.x * scalar, this.y * scalar, this.z * scalar);
+            }
+
+            dot(v) {
+                return this.x * v.x + this.y * v.y + this.z * v.z;
+            }
+
+            cross(v) {
+                return new Vec3(
+                    this.y * v.z - this.z * v.y,
+                    this.z * v.x - this.x * v.z,
+                    this.x * v.y - this.y * v.x
+                );
+            }
+
+            length() {
+                return Math.sqrt(this.x * this.x + this.y * this.y + this.z * this.z);
+            }
+
+            normalize() {
+                const len = this.length();
+                return len > 0 ? new Vec3(this.x / len, this.y / len, this.z / len) : new Vec3();
+            }
+
+            reflect(normal) {
+                return this.sub(normal.mul(2 * this.dot(normal)));
+            }
+
+            refract(normal, etaRatio) {
+                const cosI = -this.dot(normal);
+                const sinT2 = etaRatio * etaRatio * (1.0 - cosI * cosI);
+                if (sinT2 >= 1.0) return null;
+                const cosT = Math.sqrt(1.0 - sinT2);
+                return this.mul(etaRatio).add(normal.mul(etaRatio * cosI - cosT));
+            }
+        }
+
+        class Ray {
+            constructor(origin, direction) {
+                this.origin = origin;
+                this.direction = direction.normalize();
+            }
+
+            at(t) {
+                return this.origin.add(this.direction.mul(t));
+            }
+        }
+
+        class Material {
+            constructor(color, type = 'diffuse', reflectivity = 0.0, transparency = 0.0, refractiveIndex = 1.0) {
+                this.color = color;
+                this.type = type;
+                this.reflectivity = reflectivity;
+                this.transparency = transparency;
+                this.refractiveIndex = refractiveIndex;
+            }
+        }
+
+        class Sphere {
+            constructor(center, radius, material) {
+                this.center = center;
+                this.radius = radius;
+                this.material = material;
+            }
+
+            intersect(ray) {
+                const oc = ray.origin.sub(this.center);
+                const a = ray.direction.dot(ray.direction);
+                const b = 2.0 * oc.dot(ray.direction);
+                const c = oc.dot(oc) - this.radius * this.radius;
+                const discriminant = b * b - 4 * a * c;
+
+                if (discriminant < 0) return null;
+
+                const t1 = (-b - Math.sqrt(discriminant)) / (2 * a);
+                const t2 = (-b + Math.sqrt(discriminant)) / (2 * a);
+
+                const t = t1 > 0.001 ? t1 : (t2 > 0.001 ? t2 : null);
+
+                if (t === null) return null;
+
+                const point = ray.at(t);
+                const normal = point.sub(this.center).normalize();
+
+                return {
+                    t: t,
+                    point: point,
+                    normal: normal,
+                    material: this.material
+                };
+            }
+        }
+
+        class Plane {
+            constructor(point, normal, material) {
+                this.point = point;
+                this.normal = normal.normalize();
+                this.material = material;
+            }
+
+            intersect(ray) {
+                const denom = this.normal.dot(ray.direction);
+                if (Math.abs(denom) < 1e-6) return null;
+
+                const t = this.point.sub(ray.origin).dot(this.normal) / denom;
+                if (t < 0.001) return null;
+
+                const point = ray.at(t);
+                return {
+                    t: t,
+                    point: point,
+                    normal: this.normal,
+                    material: this.material
+                };
+            }
+        }
+
+        class Camera {
+            constructor(position, target, up, fov, aspect) {
+                this.position = position;
+                this.target = target;
+                this.up = up;
+                this.fov = fov;
+                this.aspect = aspect;
+                this.updateViewMatrix();
+            }
+
+            updateViewMatrix() {
+                this.forward = this.target.sub(this.position).normalize();
+                this.right = this.forward.cross(this.up).normalize();
+                this.up = this.right.cross(this.forward).normalize();
+
+                const theta = this.fov * Math.PI / 180;
+                const halfHeight = Math.tan(theta / 2);
+                const halfWidth = this.aspect * halfHeight;
+
+                this.lowerLeftCorner = this.position
+                    .sub(this.right.mul(halfWidth))
+                    .sub(this.up.mul(halfHeight))
+                    .add(this.forward);
+
+                this.horizontal = this.right.mul(2 * halfWidth);
+                this.vertical = this.up.mul(2 * halfHeight);
+            }
+
+            getRay(u, v) {
+                const direction = this.lowerLeftCorner
+                    .add(this.horizontal.mul(u))
+                    .add(this.vertical.mul(v))
+                    .sub(this.position);
+
+                return new Ray(this.position, direction);
+            }
+        }
+
+        class RayTracer {
+            constructor(canvas) {
+                this.canvas = canvas;
+                this.ctx = canvas.getContext('2d');
+                this.imageData = this.ctx.createImageData(canvas.width, canvas.height);
+
+                this.camera = new Camera(
+                    new Vec3(0, 0, 0),
+                    new Vec3(0, 0, -1),
+                    new Vec3(0, 1, 0),
+                    45,
+                    canvas.width / canvas.height
+                );
+
+                this.light = new Vec3(5, 5, 5);
+                this.lightIntensity = 1.0;
+                this.ambientLight = 0.1;
+                this.maxBounces = 5;
+                this.samples = 1;
+
+                this.skyColor = new Vec3(0.53, 0.81, 0.92);
+                this.groundColor = new Vec3(0.55, 0.27, 0.07);
+
+                this.setupScene();
+                this.setupControls();
+            }
+
+            setupScene() {
+                this.objects = [
+                    new Sphere(
+                        new Vec3(0, 0, -3),
+                        1.0,
+                        new Material(new Vec3(1, 0.27, 0.27), 'diffuse', 0.8)
+                    ),
+                    new Plane(
+                        new Vec3(0, -2, 0),
+                        new Vec3(0, 1, 0),
+                        new Material(this.groundColor, 'diffuse', 0.1)
+                    )
+                ];
+            }
+
+            setupControls() {
+                const controls = {
+                    sphereColor: document.getElementById('sphereColor'),
+                    sphereRadius: document.getElementById('sphereRadius'),
+                    sphereMaterial: document.getElementById('sphereMaterial'),
+                    reflectivity: document.getElementById('reflectivity'),
+                    lightIntensity: document.getElementById('lightIntensity'),
+                    ambientLight: document.getElementById('ambientLight'),
+                    skyColor: document.getElementById('skyColor'),
+                    groundColor: document.getElementById('groundColor'),
+                    maxBounces: document.getElementById('maxBounces'),
+                    samples: document.getElementById('samples')
+                };
+
+                controls.sphereColor.addEventListener('input', (e) => {
+                    const color = this.hexToVec3(e.target.value);
+                    this.objects[0].material.color = color;
+                });
+
+                controls.sphereRadius.addEventListener('input', (e) => {
+                    this.objects[0].radius = parseFloat(e.target.value);
+                    document.getElementById('radiusValue').textContent = e.target.value;
+                });
+
+                controls.sphereMaterial.addEventListener('change', (e) => {
+                    const material = this.objects[0].material;
+                    material.type = e.target.value;
+
+                    switch(e.target.value) {
+                        case 'metal':
+                            material.reflectivity = 0.8;
+                            material.transparency = 0.0;
+                            break;
+                        case 'glass':
+                            material.reflectivity = 0.1;
+                            material.transparency = 0.9;
+                            material.refractiveIndex = 1.5;
+                            break;
+                        default:
+                            material.reflectivity = 0.1;
+                            material.transparency = 0.0;
+                    }
+                    controls.reflectivity.value = material.reflectivity;
+                    document.getElementById('reflectivityValue').textContent = material.reflectivity.toFixed(1);
+                });
+
+                controls.reflectivity.addEventListener('input', (e) => {
+                    this.objects[0].material.reflectivity = parseFloat(e.target.value);
+                    document.getElementById('reflectivityValue').textContent = e.target.value;
+                });
+
+                controls.lightIntensity.addEventListener('input', (e) => {
+                    this.lightIntensity = parseFloat(e.target.value);
+                    document.getElementById('lightIntensityValue').textContent = e.target.value;
+                });
+
+                controls.ambientLight.addEventListener('input', (e) => {
+                    this.ambientLight = parseFloat(e.target.value);
+                    document.getElementById('ambientValue').textContent = e.target.value;
+                });
+
+                controls.skyColor.addEventListener('input', (e) => {
+                    this.skyColor = this.hexToVec3(e.target.value);
+                });
+
+                controls.groundColor.addEventListener('input', (e) => {
+                    this.groundColor = this.hexToVec3(e.target.value);
+                    this.objects[1].material.color = this.groundColor;
+                });
+
+                controls.maxBounces.addEventListener('input', (e) => {
+                    this.maxBounces = parseInt(e.target.value);
+                    document.getElementById('maxBouncesValue').textContent = e.target.value;
+                });
+
+                controls.samples.addEventListener('input', (e) => {
+                    this.samples = parseInt(e.target.value);
+                    document.getElementById('samplesValue').textContent = e.target.value;
+                });
+
+                document.getElementById('renderBtn').addEventListener('click', () => {
+                    this.render();
+                });
+
+                document.getElementById('resetCamera').addEventListener('click', () => {
+                    this.camera.position = new Vec3(0, 0, 0);
+                    this.camera.target = new Vec3(0, 0, -1);
+                    this.camera.updateViewMatrix();
+                    this.render();
+                });
+
+                this.setupMouseControls();
+            }
+
+            setupMouseControls() {
+                let isMouseDown = false;
+                let lastMouseX = 0;
+                let lastMouseY = 0;
+                let cameraAngleX = 0;
+                let cameraAngleY = 0;
+
+                this.canvas.addEventListener('mousedown', (e) => {
+                    isMouseDown = true;
+                    lastMouseX = e.clientX;
+                    lastMouseY = e.clientY;
+                });
+
+                this.canvas.addEventListener('mousemove', (e) => {
+                    if (!isMouseDown) return;
+
+                    const deltaX = e.clientX - lastMouseX;
+                    const deltaY = e.clientY - lastMouseY;
+
+                    cameraAngleY += deltaX * 0.01;
+                    cameraAngleX += deltaY * 0.01;
+
+                    cameraAngleX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, cameraAngleX));
+
+                    const radius = 5;
+                    this.camera.position = new Vec3(
+                        radius * Math.sin(cameraAngleY) * Math.cos(cameraAngleX),
+                        radius * Math.sin(cameraAngleX),
+                        radius * Math.cos(cameraAngleY) * Math.cos(cameraAngleX)
+                    );
+
+                    this.camera.target = new Vec3(0, 0, -3);
+                    this.camera.updateViewMatrix();
+
+                    lastMouseX = e.clientX;
+                    lastMouseY = e.clientY;
+                });
+
+                this.canvas.addEventListener('mouseup', () => {
+                    isMouseDown = false;
+                });
+
+                this.canvas.addEventListener('mouseleave', () => {
+                    isMouseDown = false;
+                });
+            }
+
+            hexToVec3(hex) {
+                const r = parseInt(hex.slice(1, 3), 16) / 255;
+                const g = parseInt(hex.slice(3, 5), 16) / 255;
+                const b = parseInt(hex.slice(5, 7), 16) / 255;
+                return new Vec3(r, g, b);
+            }
+
+            intersect(ray) {
+                let closest = null;
+                let closestT = Infinity;
+
+                for (const obj of this.objects) {
+                    const hit = obj.intersect(ray);
+                    if (hit && hit.t < closestT) {
+                        closest = hit;
+                        closestT = hit.t;
+                    }
+                }
+
+                return closest;
+            }
+
+            trace(ray, depth = 0) {
+                if (depth >= this.maxBounces) {
+                    return this.skyColor;
+                }
+
+                const hit = this.intersect(ray);
+                if (!hit) {
+                    return this.skyColor;
+                }
+
+                const lightDir = this.light.sub(hit.point).normalize();
+                const shadowRay = new Ray(hit.point.add(hit.normal.mul(0.001)), lightDir);
+                const shadowHit = this.intersect(shadowRay);
+
+                const inShadow = shadowHit !== null;
+
+                let color = hit.material.color.mul(this.ambientLight);
+
+                if (!inShadow) {
+                    const lambertian = Math.max(0, hit.normal.dot(lightDir));
+                    color = color.add(hit.material.color.mul(lambertian * this.lightIntensity));
+
+                    const viewDir = ray.direction.mul(-1);
+                    const reflectDir = lightDir.reflect(hit.normal);
+                    const specular = Math.pow(Math.max(0, viewDir.dot(reflectDir)), 32);
+                    color = color.add(new Vec3(1, 1, 1).mul(specular * 0.5 * this.lightIntensity));
+                }
+
+                if (hit.material.reflectivity > 0) {
+                    const reflectDir = ray.direction.reflect(hit.normal);
+                    const reflectRay = new Ray(hit.point.add(hit.normal.mul(0.001)), reflectDir);
+                    const reflectColor = this.trace(reflectRay, depth + 1);
+                    color = color.mul(1 - hit.material.reflectivity).add(reflectColor.mul(hit.material.reflectivity));
+                }
+
+                if (hit.material.transparency > 0 && hit.material.type === 'glass') {
+                    const etaRatio = 1.0 / hit.material.refractiveIndex;
+                    const refractDir = ray.direction.refract(hit.normal, etaRatio);
+
+                    if (refractDir) {
+                        const refractRay = new Ray(hit.point.sub(hit.normal.mul(0.001)), refractDir);
+                        const refractColor = this.trace(refractRay, depth + 1);
+                        color = color.mul(1 - hit.material.transparency).add(refractColor.mul(hit.material.transparency));
+                    }
+                }
+
+                return color;
+            }
+
+            render() {
+                const startTime = performance.now();
+                const width = this.canvas.width;
+                const height = this.canvas.height;
+
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        let color = new Vec3(0, 0, 0);
+
+                        for (let s = 0; s < this.samples; s++) {
+                            const u = (x + Math.random()) / width;
+                            const v = 1 - (y + Math.random()) / height;
+
+                            const ray = this.camera.getRay(u, v);
+                            color = color.add(this.trace(ray));
+                        }
+
+                        color = color.mul(1 / this.samples);
+
+                        color.x = Math.sqrt(Math.min(1, color.x));
+                        color.y = Math.sqrt(Math.min(1, color.y));
+                        color.z = Math.sqrt(Math.min(1, color.z));
+
+                        const index = (y * width + x) * 4;
+                        this.imageData.data[index] = Math.min(255, color.x * 255);
+                        this.imageData.data[index + 1] = Math.min(255, color.y * 255);
+                        this.imageData.data[index + 2] = Math.min(255, color.z * 255);
+                        this.imageData.data[index + 3] = 255;
+                    }
+                }
+
+                this.ctx.putImageData(this.imageData, 0, 0);
+
+                const endTime = performance.now();
+                document.getElementById('renderTime').textContent = `Render time: ${(endTime - startTime).toFixed(2)}ms`;
+            }
+        }
+
+        const canvas = document.getElementById('canvas');
+        const rayTracer = new RayTracer(canvas);
+        rayTracer.render();
+    </script>
+</body>
+</html>

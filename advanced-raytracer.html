@@ -1,0 +1,1968 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Real-time Ray Tracer</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #0a0a0a;
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        .main-container {
+            display: flex;
+            height: 100vh;
+        }
+
+        .viewport {
+            flex: 1;
+            position: relative;
+            background: #000;
+        }
+
+        #canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            cursor: grab;
+        }
+
+        #canvas:active {
+            cursor: grabbing;
+        }
+
+        .viewport-overlay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            z-index: 100;
+        }
+
+        .side-panel {
+            width: 350px;
+            background: #1a1a1a;
+            border-left: 1px solid #333;
+            overflow-y: auto;
+            padding: 0;
+        }
+
+        .panel-section {
+            border-bottom: 1px solid #333;
+        }
+
+        .section-header {
+            background: #2a2a2a;
+            padding: 12px 15px;
+            font-weight: 600;
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .section-header:hover {
+            background: #333;
+        }
+
+        .section-content {
+            padding: 15px;
+            display: none;
+        }
+
+        .section-content.expanded {
+            display: block;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        .control-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 13px;
+            color: #ccc;
+        }
+
+        .control-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        input[type="range"] {
+            flex: 1;
+            height: 4px;
+            border-radius: 2px;
+            background: #333;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #4a90e2;
+            cursor: pointer;
+        }
+
+        input[type="color"] {
+            width: 40px;
+            height: 30px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        input[type="number"] {
+            width: 60px;
+            padding: 5px;
+            background: #333;
+            border: 1px solid #555;
+            color: #fff;
+            border-radius: 4px;
+        }
+
+        select {
+            width: 100%;
+            padding: 8px;
+            background: #333;
+            border: 1px solid #555;
+            color: #fff;
+            border-radius: 4px;
+        }
+
+        button {
+            background: #4a90e2;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #357abd;
+        }
+
+        button.secondary {
+            background: #666;
+        }
+
+        button.secondary:hover {
+            background: #777;
+        }
+
+        button.danger {
+            background: #d32f2f;
+        }
+
+        button.danger:hover {
+            background: #b71c1c;
+        }
+
+        .value-display {
+            min-width: 40px;
+            text-align: right;
+            font-size: 12px;
+            color: #aaa;
+        }
+
+        .object-list {
+            max-height: 200px;
+            overflow-y: auto;
+            background: #222;
+            border: 1px solid #444;
+            border-radius: 4px;
+        }
+
+        .object-item {
+            padding: 8px 12px;
+            border-bottom: 1px solid #333;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .object-item:hover {
+            background: #333;
+        }
+
+        .object-item.selected {
+            background: #4a90e2;
+        }
+
+        .object-controls {
+            display: flex;
+            gap: 5px;
+        }
+
+        .mini-button {
+            padding: 4px 8px;
+            font-size: 11px;
+            min-width: auto;
+        }
+
+        .performance-stats {
+            font-size: 11px;
+            line-height: 1.4;
+        }
+
+        .tabs {
+            display: flex;
+            background: #2a2a2a;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 10px;
+            text-align: center;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            font-size: 12px;
+        }
+
+        .tab.active {
+            border-bottom-color: #4a90e2;
+            background: #333;
+        }
+
+        .tab-content {
+            display: none;
+            padding: 15px;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .color-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 5px;
+            margin-top: 10px;
+        }
+
+        .preset-color {
+            width: 100%;
+            height: 30px;
+            border: 2px solid transparent;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .preset-color:hover {
+            border-color: #4a90e2;
+        }
+
+        .toggle-arrow {
+            transition: transform 0.2s;
+        }
+
+        .toggle-arrow.expanded {
+            transform: rotate(90deg);
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <div class="viewport">
+            <canvas id="canvas"></canvas>
+            <div class="viewport-overlay">
+                <div class="performance-stats" id="stats">
+                    <div>FPS: <span id="fps">--</span></div>
+                    <div>Frame Time: <span id="frameTime">--</span>ms</div>
+                    <div>Rays/Frame: <span id="rayCount">--</span>M</div>
+                    <div>Samples: <span id="currentSamples">--</span></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="side-panel">
+            <!-- Scene Objects -->
+            <div class="panel-section">
+                <div class="section-header" onclick="toggleSection(this)">
+                    <span>Scene Objects</span>
+                    <span class="toggle-arrow">▶</span>
+                </div>
+                <div class="section-content expanded">
+                    <div class="control-group">
+                        <button onclick="addObject('sphere')">Add Sphere</button>
+                        <button onclick="addObject('plane')" class="secondary">Add Plane</button>
+                        <button onclick="addObject('box')" class="secondary">Add Box</button>
+                    </div>
+                    <div class="object-list" id="objectList"></div>
+                    <div id="objectProperties" style="margin-top: 15px;"></div>
+                </div>
+            </div>
+
+            <!-- Camera Controls -->
+            <div class="panel-section">
+                <div class="section-header" onclick="toggleSection(this)">
+                    <span>Camera</span>
+                    <span class="toggle-arrow">▶</span>
+                </div>
+                <div class="section-content">
+                    <div class="control-group">
+                        <label>Field of View: <span class="value-display" id="fovValue">45°</span></label>
+                        <input type="range" id="fov" min="20" max="120" value="45">
+                    </div>
+                    <div class="control-group">
+                        <label>Exposure: <span class="value-display" id="exposureValue">1.0</span></label>
+                        <input type="range" id="exposure" min="0.1" max="5.0" step="0.1" value="1.0">
+                    </div>
+                    <div class="control-group">
+                        <label>Focus Distance: <span class="value-display" id="focusValue">5.0</span></label>
+                        <input type="range" id="focusDistance" min="1" max="20" step="0.5" value="5.0">
+                    </div>
+                    <div class="control-group">
+                        <label>Aperture: <span class="value-display" id="apertureValue">0.0</span></label>
+                        <input type="range" id="aperture" min="0" max="2" step="0.1" value="0.0">
+                    </div>
+                    <button onclick="resetCamera()">Reset Position</button>
+                </div>
+            </div>
+
+            <!-- Lighting -->
+            <div class="panel-section">
+                <div class="section-header" onclick="toggleSection(this)">
+                    <span>Lighting</span>
+                    <span class="toggle-arrow">▶</span>
+                </div>
+                <div class="section-content">
+                    <div class="tabs">
+                        <div class="tab active" onclick="switchTab(this, 'lighting')">Global</div>
+                        <div class="tab" onclick="switchTab(this, 'lights')">Lights</div>
+                        <div class="tab" onclick="switchTab(this, 'environment')">Environment</div>
+                    </div>
+
+                    <div class="tab-content active" id="lighting">
+                        <div class="control-group">
+                            <label>Ambient: <span class="value-display" id="ambientValue">0.1</span></label>
+                            <input type="range" id="ambient" min="0" max="1" step="0.05" value="0.1">
+                        </div>
+                        <div class="control-group">
+                            <label>Global Illumination: <span class="value-display" id="giValue">0.5</span></label>
+                            <input type="range" id="globalIllumination" min="0" max="2" step="0.1" value="0.5">
+                        </div>
+                    </div>
+
+                    <div class="tab-content" id="lights">
+                        <button onclick="addLight('point')">Add Point Light</button>
+                        <button onclick="addLight('directional')" class="secondary">Add Sun</button>
+                        <div id="lightList" style="margin-top: 10px;"></div>
+                    </div>
+
+                    <div class="tab-content" id="environment">
+                        <div class="control-group">
+                            <label>Sky Color</label>
+                            <input type="color" id="skyColor" value="#87ceeb">
+                        </div>
+                        <div class="control-group">
+                            <label>Horizon Color</label>
+                            <input type="color" id="horizonColor" value="#ffa500">
+                        </div>
+                        <div class="control-group">
+                            <label>Ground Color</label>
+                            <input type="color" id="groundColor" value="#8b4513">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Render Settings -->
+            <div class="panel-section">
+                <div class="section-header" onclick="toggleSection(this)">
+                    <span>Render Settings</span>
+                    <span class="toggle-arrow">▶</span>
+                </div>
+                <div class="section-content">
+                    <div class="control-group">
+                        <label>Max Bounces: <span class="value-display" id="bouncesValue">4</span></label>
+                        <input type="range" id="maxBounces" min="1" max="10" value="4">
+                    </div>
+                    <div class="control-group">
+                        <label>Samples/Frame: <span class="value-display" id="samplesValue">1</span></label>
+                        <input type="range" id="samples" min="1" max="64" value="1">
+                    </div>
+                    <div class="control-group">
+                        <label>Accumulation: <span class="value-display" id="accumValue">Off</span></label>
+                        <input type="checkbox" id="accumulation">
+                    </div>
+                    <div class="control-group">
+                        <label>Denoising: <span class="value-display" id="denoiseValue">Off</span></label>
+                        <input type="checkbox" id="denoising">
+                    </div>
+                    <div class="control-group">
+                        <label>Resolution Scale: <span class="value-display" id="resScaleValue">1.0</span></label>
+                        <input type="range" id="resolutionScale" min="0.25" max="2.0" step="0.25" value="1.0">
+                    </div>
+                    <button onclick="resetAccumulation()">Reset Accumulation</button>
+                </div>
+            </div>
+
+            <!-- Post Processing -->
+            <div class="panel-section">
+                <div class="section-header" onclick="toggleSection(this)">
+                    <span>Post Processing</span>
+                    <span class="toggle-arrow">▶</span>
+                </div>
+                <div class="section-content">
+                    <div class="control-group">
+                        <label>Tone Mapping</label>
+                        <select id="toneMapping">
+                            <option value="linear">Linear</option>
+                            <option value="reinhard" selected>Reinhard</option>
+                            <option value="aces">ACES</option>
+                            <option value="filmic">Filmic</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <label>Gamma: <span class="value-display" id="gammaValue">2.2</span></label>
+                        <input type="range" id="gamma" min="1.0" max="3.0" step="0.1" value="2.2">
+                    </div>
+                    <div class="control-group">
+                        <label>Saturation: <span class="value-display" id="saturationValue">1.0</span></label>
+                        <input type="range" id="saturation" min="0" max="2" step="0.1" value="1.0">
+                    </div>
+                    <div class="control-group">
+                        <label>Contrast: <span class="value-display" id="contrastValue">1.0</span></label>
+                        <input type="range" id="contrast" min="0.5" max="2.0" step="0.1" value="1.0">
+                    </div>
+                    <div class="control-group">
+                        <label>Vignette: <span class="value-display" id="vignetteValue">0.0</span></label>
+                        <input type="range" id="vignette" min="0" max="1" step="0.1" value="0.0">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script id="rayTracingShader" type="x-shader/x-fragment">
+        #ifdef GL_ES
+        precision highp float;
+        #endif
+
+        #ifdef GL_FRAGMENT_PRECISION_HIGH
+        precision highp float;
+        #else
+        precision mediump float;
+        #endif
+
+        uniform vec2 u_resolution;
+        uniform float u_time;
+        uniform vec3 u_cameraPos;
+        uniform vec3 u_cameraTarget;
+        uniform vec3 u_cameraUp;
+        uniform float u_fov;
+        uniform float u_exposure;
+        uniform float u_focusDistance;
+        uniform float u_aperture;
+
+        uniform int u_maxBounces;
+        uniform int u_samples;
+        uniform float u_ambient;
+        uniform float u_globalIllumination;
+
+        uniform vec3 u_skyColor;
+        uniform vec3 u_horizonColor;
+        uniform vec3 u_groundColor;
+
+        uniform float u_gamma;
+        uniform float u_saturation;
+        uniform float u_contrast;
+        uniform float u_vignette;
+        uniform int u_toneMapping;
+
+        uniform int u_frameCount;
+        uniform int u_accumulation;
+        uniform int u_denoising;
+        uniform sampler2D u_previousFrame;
+
+        // Material definitions
+        struct Material {
+            vec3 albedo;
+            float metallic;
+            float roughness;
+            float emission;
+            float transparency;
+            float ior;
+        };
+
+        // Primitive definitions
+        struct Sphere {
+            vec3 center;
+            float radius;
+            Material material;
+        };
+
+        struct Plane {
+            vec3 point;
+            vec3 normal;
+            Material material;
+        };
+
+        struct Box {
+            vec3 center;
+            vec3 size;
+            Material material;
+        };
+
+        struct Light {
+            vec3 position;
+            vec3 color;
+            float intensity;
+            int type; // 0: point, 1: directional
+        };
+
+        // Scene data (will be updated from JavaScript)
+        uniform int u_numSpheres;
+        uniform int u_numPlanes;
+        uniform int u_numBoxes;
+        uniform int u_numLights;
+
+        // Arrays for scene objects (using smaller arrays for better compatibility)
+        uniform vec4 u_spheres[8]; // center.xyz, radius
+        uniform vec4 u_sphereMaterials[16]; // albedo.rgb + metallic, roughness + emission + transparency + ior
+
+        uniform vec4 u_planes[4]; // point.xyz + normal.x
+        uniform vec4 u_planeNormals[4]; // normal.yz + padding
+        uniform vec4 u_planeMaterials[8];
+
+        uniform vec3 u_boxes[4];
+        uniform vec3 u_boxSizes[4];
+        uniform vec4 u_boxMaterials[8];
+
+        uniform vec3 u_lightPositions[4];
+        uniform vec3 u_lightColors[4];
+        uniform vec2 u_lightData[4]; // intensity, type
+
+        // Random number generation
+        float random(vec2 co) {
+            return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);
+        }
+
+        vec3 randomOnSphere(vec2 seed) {
+            float z = random(seed) * 2.0 - 1.0;
+            float a = random(seed + vec2(1.0, 0.0)) * 6.28318530718;
+            float r = sqrt(1.0 - z * z);
+            return vec3(r * cos(a), r * sin(a), z);
+        }
+
+        vec3 randomInHemisphere(vec3 normal, vec2 seed) {
+            vec3 dir = randomOnSphere(seed);
+            return dot(dir, normal) > 0.0 ? dir : -dir;
+        }
+
+        // Ray structure
+        struct Ray {
+            vec3 origin;
+            vec3 direction;
+        };
+
+        // Hit information
+        struct HitInfo {
+            bool hit;
+            float t;
+            vec3 point;
+            vec3 normal;
+            Material material;
+        };
+
+        // Intersection functions
+        HitInfo intersectSphere(Ray ray, vec3 center, float radius, Material material) {
+            HitInfo info;
+            info.hit = false;
+
+            vec3 oc = ray.origin - center;
+            float a = dot(ray.direction, ray.direction);
+            float b = 2.0 * dot(oc, ray.direction);
+            float c = dot(oc, oc) - radius * radius;
+            float discriminant = b * b - 4.0 * a * c;
+
+            if (discriminant >= 0.0) {
+                float t1 = (-b - sqrt(discriminant)) / (2.0 * a);
+                float t2 = (-b + sqrt(discriminant)) / (2.0 * a);
+                float t = t1 > 0.001 ? t1 : (t2 > 0.001 ? t2 : -1.0);
+
+                if (t > 0.001) {
+                    info.hit = true;
+                    info.t = t;
+                    info.point = ray.origin + t * ray.direction;
+                    info.normal = normalize(info.point - center);
+                    info.material = material;
+                }
+            }
+
+            return info;
+        }
+
+        HitInfo intersectPlane(Ray ray, vec3 point, vec3 normal, Material material) {
+            HitInfo info;
+            info.hit = false;
+
+            float denom = dot(normal, ray.direction);
+            if (abs(denom) > 1e-6) {
+                float t = dot(point - ray.origin, normal) / denom;
+                if (t > 0.001) {
+                    info.hit = true;
+                    info.t = t;
+                    info.point = ray.origin + t * ray.direction;
+                    info.normal = normal;
+                    info.material = material;
+                }
+            }
+
+            return info;
+        }
+
+        HitInfo intersectBox(Ray ray, vec3 center, vec3 size, Material material) {
+            HitInfo info;
+            info.hit = false;
+
+            vec3 m = 1.0 / ray.direction;
+            vec3 n = m * (ray.origin - center);
+            vec3 k = abs(m) * size * 0.5;
+
+            vec3 t1 = -n - k;
+            vec3 t2 = -n + k;
+
+            float tN = max(max(t1.x, t1.y), t1.z);
+            float tF = min(min(t2.x, t2.y), t2.z);
+
+            if (tN < tF && tF > 0.001) {
+                float t = tN > 0.001 ? tN : tF;
+                info.hit = true;
+                info.t = t;
+                info.point = ray.origin + t * ray.direction;
+
+                vec3 d = info.point - center;
+                vec3 absD = abs(d);
+                if (absD.x > absD.y && absD.x > absD.z) {
+                    info.normal = vec3(sign(d.x), 0.0, 0.0);
+                } else if (absD.y > absD.z) {
+                    info.normal = vec3(0.0, sign(d.y), 0.0);
+                } else {
+                    info.normal = vec3(0.0, 0.0, sign(d.z));
+                }
+
+                info.material = material;
+            }
+
+            return info;
+        }
+
+        // Scene intersection
+        HitInfo intersectScene(Ray ray) {
+            HitInfo closest;
+            closest.hit = false;
+            closest.t = 1e20;
+
+            // Intersect spheres
+            for (int i = 0; i < 8; i++) {
+                if (i >= u_numSpheres) break;
+
+                vec3 center = u_spheres[i].xyz;
+                float radius = u_spheres[i].w;
+
+                Material mat;
+                mat.albedo = u_sphereMaterials[i * 2].rgb;
+                mat.metallic = u_sphereMaterials[i * 2].a;
+                mat.roughness = u_sphereMaterials[i * 2 + 1].r;
+                mat.emission = u_sphereMaterials[i * 2 + 1].g;
+                mat.transparency = u_sphereMaterials[i * 2 + 1].b;
+                mat.ior = u_sphereMaterials[i * 2 + 1].a;
+
+                HitInfo hit = intersectSphere(ray, center, radius, mat);
+                if (hit.hit && hit.t < closest.t) {
+                    closest = hit;
+                }
+            }
+
+            // Intersect planes
+            for (int i = 0; i < 4; i++) {
+                if (i >= u_numPlanes) break;
+
+                vec3 point = u_planes[i].xyz;
+                vec3 normal = vec3(u_planes[i].w, u_planeNormals[i].xy);
+
+                Material mat;
+                mat.albedo = u_planeMaterials[i * 2].rgb;
+                mat.metallic = u_planeMaterials[i * 2].a;
+                mat.roughness = u_planeMaterials[i * 2 + 1].r;
+                mat.emission = u_planeMaterials[i * 2 + 1].g;
+                mat.transparency = u_planeMaterials[i * 2 + 1].b;
+                mat.ior = u_planeMaterials[i * 2 + 1].a;
+
+                HitInfo hit = intersectPlane(ray, point, normal, mat);
+                if (hit.hit && hit.t < closest.t) {
+                    closest = hit;
+                }
+            }
+
+            // Intersect boxes
+            for (int i = 0; i < 4; i++) {
+                if (i >= u_numBoxes) break;
+
+                vec3 center = u_boxes[i];
+                vec3 size = u_boxSizes[i];
+
+                Material mat;
+                mat.albedo = u_boxMaterials[i * 2].rgb;
+                mat.metallic = u_boxMaterials[i * 2].a;
+                mat.roughness = u_boxMaterials[i * 2 + 1].r;
+                mat.emission = u_boxMaterials[i * 2 + 1].g;
+                mat.transparency = u_boxMaterials[i * 2 + 1].b;
+                mat.ior = u_boxMaterials[i * 2 + 1].a;
+
+                HitInfo hit = intersectBox(ray, center, size, mat);
+                if (hit.hit && hit.t < closest.t) {
+                    closest = hit;
+                }
+            }
+
+            return closest;
+        }
+
+        // Environment sampling
+        vec3 sampleEnvironment(vec3 direction) {
+            float t = 0.5 * (direction.y + 1.0);
+            vec3 skyGradient = mix(u_horizonColor, u_skyColor, t);
+            return direction.y < 0.0 ? u_groundColor : skyGradient;
+        }
+
+        // PBR BRDF functions
+        float distributionGGX(vec3 N, vec3 H, float roughness) {
+            float a = roughness * roughness;
+            float a2 = a * a;
+            float NdotH = max(dot(N, H), 0.0);
+            float NdotH2 = NdotH * NdotH;
+
+            float num = a2;
+            float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+            denom = 3.14159265 * denom * denom;
+
+            return num / denom;
+        }
+
+        float geometrySchlickGGX(float NdotV, float roughness) {
+            float r = (roughness + 1.0);
+            float k = (r * r) / 8.0;
+
+            float num = NdotV;
+            float denom = NdotV * (1.0 - k) + k;
+
+            return num / denom;
+        }
+
+        float geometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
+            float NdotV = max(dot(N, V), 0.0);
+            float NdotL = max(dot(N, L), 0.0);
+            float ggx2 = geometrySchlickGGX(NdotV, roughness);
+            float ggx1 = geometrySchlickGGX(NdotL, roughness);
+
+            return ggx1 * ggx2;
+        }
+
+        vec3 fresnelSchlick(float cosTheta, vec3 F0) {
+            return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
+        }
+
+        // Ray tracing function
+        vec3 trace(Ray ray, vec2 seed) {
+            vec3 color = vec3(0.0);
+            vec3 throughput = vec3(1.0);
+
+            for (int bounce = 0; bounce < 10; bounce++) {
+                if (bounce >= u_maxBounces) break;
+
+                HitInfo hit = intersectScene(ray);
+
+                if (!hit.hit) {
+                    color += throughput * sampleEnvironment(ray.direction);
+                    break;
+                }
+
+                // Add emission
+                color += throughput * hit.material.albedo * hit.material.emission;
+
+                // Calculate lighting
+                vec3 V = -ray.direction;
+                vec3 N = hit.normal;
+
+                // Base reflectivity for dielectrics
+                vec3 F0 = vec3(0.04);
+                F0 = mix(F0, hit.material.albedo, hit.material.metallic);
+
+                vec3 totalLight = vec3(0.0);
+
+                // Direct lighting
+                for (int i = 0; i < 4; i++) {
+                    if (i >= u_numLights) break;
+
+                    vec3 lightPos = u_lightPositions[i];
+                    vec3 lightColor = u_lightColors[i];
+                    float intensity = u_lightData[i].x;
+                    int lightType = int(u_lightData[i].y);
+
+                    vec3 L;
+                    float distance;
+
+                    if (lightType == 0) { // Point light
+                        L = lightPos - hit.point;
+                        distance = length(L);
+                        L = normalize(L);
+                    } else { // Directional light
+                        L = normalize(-lightPos);
+                        distance = 1e20;
+                    }
+
+                    // Shadow test
+                    Ray shadowRay;
+                    shadowRay.origin = hit.point + N * 0.001;
+                    shadowRay.direction = L;
+                    HitInfo shadowHit = intersectScene(shadowRay);
+
+                    if (!shadowHit.hit || shadowHit.t > distance) {
+                        vec3 H = normalize(V + L);
+
+                        float NdotL = max(dot(N, L), 0.0);
+                        float NdotV = max(dot(N, V), 0.0);
+
+                        if (NdotL > 0.0) {
+                            float D = distributionGGX(N, H, hit.material.roughness);
+                            float G = geometrySmith(N, V, L, hit.material.roughness);
+                            vec3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);
+
+                            vec3 kS = F;
+                            vec3 kD = vec3(1.0) - kS;
+                            kD *= 1.0 - hit.material.metallic;
+
+                            vec3 numerator = D * G * F;
+                            float denominator = 4.0 * NdotV * NdotL + 0.001;
+                            vec3 specular = numerator / denominator;
+
+                            float attenuation = lightType == 0 ? 1.0 / (distance * distance) : 1.0;
+                            vec3 radiance = lightColor * intensity * attenuation;
+
+                            totalLight += (kD * hit.material.albedo / 3.14159265 + specular) * radiance * NdotL;
+                        }
+                    }
+                }
+
+                // Add ambient
+                totalLight += hit.material.albedo * u_ambient;
+
+                color += throughput * totalLight;
+
+                // Russian roulette
+                float maxComponent = max(max(throughput.r, throughput.g), throughput.b);
+                if (maxComponent < 0.1 && bounce > 3) {
+                    if (random(seed + float(bounce)) > maxComponent) break;
+                    throughput /= maxComponent;
+                }
+
+                // Sample next direction
+                vec3 newDirection;
+                if (hit.material.metallic > 0.5) {
+                    // Metallic reflection
+                    newDirection = reflect(ray.direction, N);
+                    newDirection = normalize(newDirection + randomOnSphere(seed + float(bounce)) * hit.material.roughness);
+                } else {
+                    // Diffuse scattering
+                    newDirection = randomInHemisphere(N, seed + float(bounce));
+                }
+
+                throughput *= hit.material.albedo;
+
+                ray.origin = hit.point + N * 0.001;
+                ray.direction = newDirection;
+            }
+
+            return color;
+        }
+
+        // Tone mapping functions
+        vec3 reinhardToneMapping(vec3 color) {
+            return color / (1.0 + color);
+        }
+
+        vec3 acesToneMapping(vec3 color) {
+            float a = 2.51;
+            float b = 0.03;
+            float c = 2.43;
+            float d = 0.59;
+            float e = 0.14;
+            return clamp((color * (a * color + b)) / (color * (c * color + d) + e), 0.0, 1.0);
+        }
+
+        vec3 filmicToneMapping(vec3 color) {
+            color = max(vec3(0.0), color - vec3(0.004));
+            color = (color * (6.2 * color + 0.5)) / (color * (6.2 * color + 1.7) + 0.06);
+            return color;
+        }
+
+        // Main function
+        void main() {
+            vec2 coord = gl_FragCoord.xy;
+            vec2 uv = coord / u_resolution;
+            vec2 screenPos = (coord / u_resolution) * 2.0 - 1.0;
+            screenPos.x *= u_resolution.x / u_resolution.y;
+
+            vec3 color = vec3(0.0);
+
+            // Camera setup
+            vec3 forward = normalize(u_cameraTarget - u_cameraPos);
+            vec3 right = normalize(cross(forward, u_cameraUp));
+            vec3 up = cross(right, forward);
+
+            float fovRadians = u_fov * 3.14159265 / 180.0;
+            float focalLength = 1.0 / tan(fovRadians * 0.5);
+
+            // Anti-aliasing and depth of field
+            for (int sample = 0; sample < 16; sample++) {
+                if (sample >= u_samples) break;
+
+                vec2 pixelOffset = vec2(random(coord + float(sample)), random(coord + float(sample) + 100.0)) - 0.5;
+                vec2 samplePos = screenPos + pixelOffset / u_resolution;
+
+                // Depth of field
+                vec2 apertureOffset = vec2(0.0);
+                if (u_aperture > 0.0) {
+                    float angle = random(coord + float(sample) + 200.0) * 6.28318530718;
+                    float radius = sqrt(random(coord + float(sample) + 300.0)) * u_aperture;
+                    apertureOffset = vec2(cos(angle), sin(angle)) * radius;
+                }
+
+                vec3 rayOrigin = u_cameraPos + right * apertureOffset.x + up * apertureOffset.y;
+                vec3 focusPoint = u_cameraPos + forward * u_focusDistance + right * samplePos.x * u_focusDistance / focalLength + up * samplePos.y * u_focusDistance / focalLength;
+                vec3 rayDirection = normalize(focusPoint - rayOrigin);
+
+                Ray ray;
+                ray.origin = rayOrigin;
+                ray.direction = rayDirection;
+
+                vec2 seed = coord + float(sample) + u_time;
+                color += trace(ray, seed);
+            }
+
+            color /= float(u_samples);
+            color *= u_exposure;
+
+            // Temporal accumulation disabled for stability
+
+            // Post-processing
+            color = max(color, vec3(0.0));
+
+            // Tone mapping
+            if (u_toneMapping == 1) {
+                color = reinhardToneMapping(color);
+            } else if (u_toneMapping == 2) {
+                color = acesToneMapping(color);
+            } else if (u_toneMapping == 3) {
+                color = filmicToneMapping(color);
+            }
+
+            // Saturation
+            float luminance = dot(color, vec3(0.299, 0.587, 0.114));
+            color = mix(vec3(luminance), color, u_saturation);
+
+            // Contrast
+            color = (color - 0.5) * u_contrast + 0.5;
+
+            // Gamma correction
+            color = pow(color, vec3(1.0 / u_gamma));
+
+            // Vignette
+            if (u_vignette > 0.0) {
+                float dist = length(uv - 0.5);
+                float vignetteFactor = 1.0 - smoothstep(0.3, 0.8, dist * u_vignette);
+                color *= vignetteFactor;
+            }
+
+            gl_FragColor = vec4(color, 1.0);
+        }
+    </script>
+
+    <script>
+        // WebGL Ray Tracer Implementation
+        class AdvancedRayTracer {
+            constructor() {
+                this.canvas = document.getElementById('canvas');
+                this.resizeCanvas();
+
+                // Try WebGL2 first, then WebGL1, then experimental
+                this.gl = this.canvas.getContext('webgl2', {
+                    alpha: false,
+                    depth: false,
+                    stencil: false,
+                    antialias: false,
+                    premultipliedAlpha: false,
+                    preserveDrawingBuffer: false
+                }) ||
+                this.canvas.getContext('webgl', {
+                    alpha: false,
+                    depth: false,
+                    stencil: false,
+                    antialias: false,
+                    premultipliedAlpha: false,
+                    preserveDrawingBuffer: false
+                }) ||
+                this.canvas.getContext('experimental-webgl', {
+                    alpha: false,
+                    depth: false,
+                    stencil: false,
+                    antialias: false,
+                    premultipliedAlpha: false,
+                    preserveDrawingBuffer: false
+                });
+
+                if (!this.gl) {
+                    throw new Error('WebGL not supported. Please enable hardware acceleration in your browser.');
+                }
+
+                console.log('WebGL Version:', this.gl.getParameter(this.gl.VERSION));
+                console.log('WebGL Vendor:', this.gl.getParameter(this.gl.VENDOR));
+                console.log('WebGL Renderer:', this.gl.getParameter(this.gl.RENDERER));
+
+                this.setupGL();
+                this.setupScene();
+                this.setupControls();
+                this.setupStats();
+
+                this.frameCount = 0;
+                this.lastTime = performance.now();
+                this.frameTime = 0;
+                this.fps = 0;
+
+                this.animate();
+            }
+
+            resizeCanvas() {
+                const rect = this.canvas.parentElement.getBoundingClientRect();
+                this.canvas.width = rect.width;
+                this.canvas.height = rect.height;
+            }
+
+            setupGL() {
+                const gl = this.gl;
+
+                // Vertex shader
+                const vertexShaderSource = `
+                    attribute vec2 a_position;
+                    void main() {
+                        gl_Position = vec4(a_position, 0.0, 1.0);
+                    }
+                `;
+
+                // Fragment shader (ray tracing shader from script tag)
+                const fragmentShaderSource = document.getElementById('rayTracingShader').textContent;
+
+                this.program = this.createProgram(vertexShaderSource, fragmentShaderSource);
+
+                // Create geometry
+                const vertices = new Float32Array([
+                    -1, -1,
+                     1, -1,
+                    -1,  1,
+                     1,  1
+                ]);
+
+                this.vertexBuffer = gl.createBuffer();
+                gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+                gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+                // Get uniform locations
+                this.uniforms = {};
+                const uniformNames = [
+                    'u_resolution', 'u_time', 'u_cameraPos', 'u_cameraTarget', 'u_cameraUp',
+                    'u_fov', 'u_exposure', 'u_focusDistance', 'u_aperture',
+                    'u_maxBounces', 'u_samples', 'u_ambient', 'u_globalIllumination',
+                    'u_skyColor', 'u_horizonColor', 'u_groundColor',
+                    'u_gamma', 'u_saturation', 'u_contrast', 'u_vignette', 'u_toneMapping',
+                    'u_frameCount', 'u_accumulation', 'u_denoising', 'u_previousFrame',
+                    'u_numSpheres', 'u_numPlanes', 'u_numBoxes', 'u_numLights'
+                ];
+
+                uniformNames.forEach(name => {
+                    this.uniforms[name] = gl.getUniformLocation(this.program, name);
+                });
+
+                // Create framebuffers for accumulation
+                this.createFramebuffers();
+            }
+
+            createProgram(vertexSource, fragmentSource) {
+                const gl = this.gl;
+
+                const vertexShader = this.createShader(gl.VERTEX_SHADER, vertexSource);
+                const fragmentShader = this.createShader(gl.FRAGMENT_SHADER, fragmentSource);
+
+                const program = gl.createProgram();
+                gl.attachShader(program, vertexShader);
+                gl.attachShader(program, fragmentShader);
+                gl.linkProgram(program);
+
+                if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                    throw new Error('Program link error: ' + gl.getProgramInfoLog(program));
+                }
+
+                return program;
+            }
+
+            createShader(type, source) {
+                const gl = this.gl;
+                const shader = gl.createShader(type);
+                gl.shaderSource(shader, source);
+                gl.compileShader(shader);
+
+                if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                    throw new Error('Shader compile error: ' + gl.getShaderInfoLog(shader));
+                }
+
+                return shader;
+            }
+
+            createFramebuffers() {
+                const gl = this.gl;
+
+                this.framebuffers = [
+                    this.createFramebuffer(),
+                    this.createFramebuffer()
+                ];
+                this.currentFramebuffer = 0;
+            }
+
+            createFramebuffer() {
+                const gl = this.gl;
+
+                const framebuffer = gl.createFramebuffer();
+                const texture = gl.createTexture();
+
+                gl.bindTexture(gl.TEXTURE_2D, texture);
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.canvas.width, this.canvas.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+                gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+                gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+
+                return { framebuffer, texture };
+            }
+
+            setupScene() {
+                this.camera = {
+                    position: [0, 2, 8],
+                    target: [0, 0, 0],
+                    up: [0, 1, 0],
+                    fov: 45,
+                    exposure: 1.0,
+                    focusDistance: 5.0,
+                    aperture: 0.0
+                };
+
+                this.renderSettings = {
+                    maxBounces: 4,
+                    samples: 1,
+                    ambient: 0.1,
+                    globalIllumination: 0.5,
+                    accumulation: false,
+                    denoising: false,
+                    resolutionScale: 1.0
+                };
+
+                this.environment = {
+                    skyColor: [0.53, 0.81, 0.92],
+                    horizonColor: [1.0, 0.65, 0.0],
+                    groundColor: [0.55, 0.27, 0.07]
+                };
+
+                this.postProcessing = {
+                    toneMapping: 1, // Reinhard
+                    gamma: 2.2,
+                    saturation: 1.0,
+                    contrast: 1.0,
+                    vignette: 0.0
+                };
+
+                this.objects = {
+                    spheres: [
+                        {
+                            center: [0, 0, 0],
+                            radius: 1.0,
+                            material: {
+                                albedo: [1.0, 0.3, 0.3],
+                                metallic: 0.8,
+                                roughness: 0.2,
+                                emission: 0.0,
+                                transparency: 0.0,
+                                ior: 1.5
+                            }
+                        },
+                        {
+                            center: [-3, 0, 0],
+                            radius: 1.0,
+                            material: {
+                                albedo: [0.3, 1.0, 0.3],
+                                metallic: 0.0,
+                                roughness: 0.8,
+                                emission: 0.0,
+                                transparency: 0.0,
+                                ior: 1.5
+                            }
+                        },
+                        {
+                            center: [3, 0, 0],
+                            radius: 1.0,
+                            material: {
+                                albedo: [0.3, 0.3, 1.0],
+                                metallic: 0.0,
+                                roughness: 0.1,
+                                emission: 0.0,
+                                transparency: 0.9,
+                                ior: 1.5
+                            }
+                        }
+                    ],
+                    planes: [
+                        {
+                            point: [0, -2, 0],
+                            normal: [0, 1, 0],
+                            material: {
+                                albedo: [0.8, 0.8, 0.8],
+                                metallic: 0.0,
+                                roughness: 0.8,
+                                emission: 0.0,
+                                transparency: 0.0,
+                                ior: 1.5
+                            }
+                        }
+                    ],
+                    boxes: []
+                };
+
+                this.lights = [
+                    {
+                        position: [5, 5, 5],
+                        color: [1.0, 1.0, 1.0],
+                        intensity: 10.0,
+                        type: 0 // point light
+                    },
+                    {
+                        position: [0.5, 1.0, 0.3], // direction for directional light
+                        color: [1.0, 0.9, 0.8],
+                        intensity: 2.0,
+                        type: 1 // directional light
+                    }
+                ];
+
+                this.selectedObject = null;
+                this.updateObjectList();
+            }
+
+            setupControls() {
+                // Camera controls
+                this.setupSlider('fov', this.camera, 'fov', (v) => `${v}°`);
+                this.setupSlider('exposure', this.camera, 'exposure');
+                this.setupSlider('focusDistance', this.camera, 'focusDistance');
+                this.setupSlider('aperture', this.camera, 'aperture');
+
+                // Render settings
+                this.setupSlider('maxBounces', this.renderSettings, 'maxBounces');
+                this.setupSlider('samples', this.renderSettings, 'samples');
+                this.setupSlider('ambient', this.renderSettings, 'ambient');
+                this.setupSlider('globalIllumination', this.renderSettings, 'globalIllumination');
+
+                // Environment
+                this.setupColorPicker('skyColor', this.environment, 'skyColor');
+                this.setupColorPicker('horizonColor', this.environment, 'horizonColor');
+                this.setupColorPicker('groundColor', this.environment, 'groundColor');
+
+                // Post-processing
+                this.setupSelect('toneMapping', this.postProcessing, 'toneMapping');
+                this.setupSlider('gamma', this.postProcessing, 'gamma');
+                this.setupSlider('saturation', this.postProcessing, 'saturation');
+                this.setupSlider('contrast', this.postProcessing, 'contrast');
+                this.setupSlider('vignette', this.postProcessing, 'vignette');
+
+                // Checkboxes
+                this.setupCheckbox('accumulation', this.renderSettings, 'accumulation');
+                this.setupCheckbox('denoising', this.renderSettings, 'denoising');
+
+                this.setupSlider('resolutionScale', this.renderSettings, 'resolutionScale');
+
+                // Mouse controls
+                this.setupMouseControls();
+
+                // Window resize
+                window.addEventListener('resize', () => {
+                    this.resizeCanvas();
+                    this.createFramebuffers();
+                    this.resetAccumulation();
+                });
+            }
+
+            setupSlider(id, obj, prop, formatter = null) {
+                const slider = document.getElementById(id);
+                const display = document.getElementById(id + 'Value');
+
+                if (slider && display) {
+                    slider.addEventListener('input', (e) => {
+                        const value = parseFloat(e.target.value);
+                        obj[prop] = value;
+                        display.textContent = formatter ? formatter(value) : value.toFixed(2);
+                        this.resetAccumulation();
+                    });
+                }
+            }
+
+            setupColorPicker(id, obj, prop) {
+                const picker = document.getElementById(id);
+                if (picker) {
+                    picker.addEventListener('input', (e) => {
+                        const color = this.hexToRgb(e.target.value);
+                        obj[prop] = [color.r / 255, color.g / 255, color.b / 255];
+                        this.resetAccumulation();
+                    });
+                }
+            }
+
+            setupSelect(id, obj, prop) {
+                const select = document.getElementById(id);
+                if (select) {
+                    select.addEventListener('change', (e) => {
+                        obj[prop] = parseInt(e.target.value);
+                        this.resetAccumulation();
+                    });
+                }
+            }
+
+            setupCheckbox(id, obj, prop) {
+                const checkbox = document.getElementById(id);
+                const display = document.getElementById(id + 'Value');
+
+                if (checkbox && display) {
+                    checkbox.addEventListener('change', (e) => {
+                        obj[prop] = e.target.checked;
+                        display.textContent = e.target.checked ? 'On' : 'Off';
+                        if (id === 'accumulation') this.resetAccumulation();
+                    });
+                }
+            }
+
+            setupMouseControls() {
+                let isMouseDown = false;
+                let lastMouseX = 0;
+                let lastMouseY = 0;
+                let cameraAngleX = 0;
+                let cameraAngleY = 0;
+
+                // Calculate initial angles
+                const forward = this.normalize(this.subtract(this.camera.target, this.camera.position));
+                cameraAngleY = Math.atan2(forward[0], forward[2]);
+                cameraAngleX = Math.asin(-forward[1]);
+
+                this.canvas.addEventListener('mousedown', (e) => {
+                    isMouseDown = true;
+                    lastMouseX = e.clientX;
+                    lastMouseY = e.clientY;
+                });
+
+                this.canvas.addEventListener('mousemove', (e) => {
+                    if (!isMouseDown) return;
+
+                    const deltaX = e.clientX - lastMouseX;
+                    const deltaY = e.clientY - lastMouseY;
+
+                    cameraAngleY += deltaX * 0.01;
+                    cameraAngleX += deltaY * 0.01;
+
+                    cameraAngleX = Math.max(-Math.PI / 2 + 0.1, Math.min(Math.PI / 2 - 0.1, cameraAngleX));
+
+                    const radius = this.length(this.subtract(this.camera.position, this.camera.target));
+
+                    this.camera.position = [
+                        this.camera.target[0] + radius * Math.sin(cameraAngleY) * Math.cos(cameraAngleX),
+                        this.camera.target[1] + radius * -Math.sin(cameraAngleX),
+                        this.camera.target[2] + radius * Math.cos(cameraAngleY) * Math.cos(cameraAngleX)
+                    ];
+
+                    lastMouseX = e.clientX;
+                    lastMouseY = e.clientY;
+
+                    this.resetAccumulation();
+                });
+
+                this.canvas.addEventListener('mouseup', () => {
+                    isMouseDown = false;
+                });
+
+                this.canvas.addEventListener('mouseleave', () => {
+                    isMouseDown = false;
+                });
+
+                this.canvas.addEventListener('wheel', (e) => {
+                    e.preventDefault();
+                    const direction = this.normalize(this.subtract(this.camera.target, this.camera.position));
+                    const distance = e.deltaY * 0.01;
+
+                    this.camera.position = [
+                        this.camera.position[0] + direction[0] * distance,
+                        this.camera.position[1] + direction[1] * distance,
+                        this.camera.position[2] + direction[2] * distance
+                    ];
+
+                    this.resetAccumulation();
+                });
+            }
+
+            setupStats() {
+                this.fpsHistory = new Array(60).fill(0);
+                this.fpsIndex = 0;
+            }
+
+            updateStats() {
+                const now = performance.now();
+                this.frameTime = now - this.lastTime;
+                this.lastTime = now;
+
+                this.fpsHistory[this.fpsIndex] = 1000 / this.frameTime;
+                this.fpsIndex = (this.fpsIndex + 1) % this.fpsHistory.length;
+
+                this.fps = this.fpsHistory.reduce((a, b) => a + b) / this.fpsHistory.length;
+
+                document.getElementById('fps').textContent = this.fps.toFixed(1);
+                document.getElementById('frameTime').textContent = this.frameTime.toFixed(2);
+
+                const rayCount = (this.canvas.width * this.canvas.height * this.renderSettings.samples) / 1000000;
+                document.getElementById('rayCount').textContent = rayCount.toFixed(2);
+                document.getElementById('currentSamples').textContent = this.renderSettings.samples;
+            }
+
+            updateObjectList() {
+                const list = document.getElementById('objectList');
+                list.innerHTML = '';
+
+                // Add spheres
+                this.objects.spheres.forEach((sphere, index) => {
+                    const item = document.createElement('div');
+                    item.className = 'object-item';
+                    item.innerHTML = `
+                        <span>Sphere ${index + 1}</span>
+                        <div class="object-controls">
+                            <button class="mini-button" onclick="rayTracer.selectObject('sphere', ${index})">Edit</button>
+                            <button class="mini-button danger" onclick="rayTracer.deleteObject('sphere', ${index})">×</button>
+                        </div>
+                    `;
+                    list.appendChild(item);
+                });
+
+                // Add planes
+                this.objects.planes.forEach((plane, index) => {
+                    const item = document.createElement('div');
+                    item.className = 'object-item';
+                    item.innerHTML = `
+                        <span>Plane ${index + 1}</span>
+                        <div class="object-controls">
+                            <button class="mini-button" onclick="rayTracer.selectObject('plane', ${index})">Edit</button>
+                            <button class="mini-button danger" onclick="rayTracer.deleteObject('plane', ${index})">×</button>
+                        </div>
+                    `;
+                    list.appendChild(item);
+                });
+
+                // Add boxes
+                this.objects.boxes.forEach((box, index) => {
+                    const item = document.createElement('div');
+                    item.className = 'object-item';
+                    item.innerHTML = `
+                        <span>Box ${index + 1}</span>
+                        <div class="object-controls">
+                            <button class="mini-button" onclick="rayTracer.selectObject('box', ${index})">Edit</button>
+                            <button class="mini-button danger" onclick="rayTracer.deleteObject('box', ${index})">×</button>
+                        </div>
+                    `;
+                    list.appendChild(item);
+                });
+            }
+
+            selectObject(type, index) {
+                this.selectedObject = { type, index };
+                this.updateObjectProperties();
+            }
+
+            updateObjectProperties() {
+                const container = document.getElementById('objectProperties');
+
+                if (!this.selectedObject) {
+                    container.innerHTML = '<p style="color: #666;">Select an object to edit properties</p>';
+                    return;
+                }
+
+                const { type, index } = this.selectedObject;
+                const obj = this.objects[type + 's'][index];
+
+                let html = `<h4>${type.charAt(0).toUpperCase() + type.slice(1)} ${index + 1} Properties</h4>`;
+
+                // Position controls
+                if (type === 'sphere' || type === 'box') {
+                    html += `
+                        <div class="control-group">
+                            <label>Position X</label>
+                            <input type="number" step="0.1" value="${obj.center[0]}" onchange="rayTracer.updateObjectProperty('center', 0, this.value)">
+                        </div>
+                        <div class="control-group">
+                            <label>Position Y</label>
+                            <input type="number" step="0.1" value="${obj.center[1]}" onchange="rayTracer.updateObjectProperty('center', 1, this.value)">
+                        </div>
+                        <div class="control-group">
+                            <label>Position Z</label>
+                            <input type="number" step="0.1" value="${obj.center[2]}" onchange="rayTracer.updateObjectProperty('center', 2, this.value)">
+                        </div>
+                    `;
+                }
+
+                // Size controls
+                if (type === 'sphere') {
+                    html += `
+                        <div class="control-group">
+                            <label>Radius</label>
+                            <input type="number" step="0.1" min="0.1" value="${obj.radius}" onchange="rayTracer.updateObjectProperty('radius', null, this.value)">
+                        </div>
+                    `;
+                }
+
+                if (type === 'box') {
+                    html += `
+                        <div class="control-group">
+                            <label>Size X</label>
+                            <input type="number" step="0.1" min="0.1" value="${obj.size[0]}" onchange="rayTracer.updateObjectProperty('size', 0, this.value)">
+                        </div>
+                        <div class="control-group">
+                            <label>Size Y</label>
+                            <input type="number" step="0.1" min="0.1" value="${obj.size[1]}" onchange="rayTracer.updateObjectProperty('size', 1, this.value)">
+                        </div>
+                        <div class="control-group">
+                            <label>Size Z</label>
+                            <input type="number" step="0.1" min="0.1" value="${obj.size[2]}" onchange="rayTracer.updateObjectProperty('size', 2, this.value)">
+                        </div>
+                    `;
+                }
+
+                // Material controls
+                html += `
+                    <div class="control-group">
+                        <label>Albedo</label>
+                        <input type="color" value="${this.rgbToHex(obj.material.albedo)}" onchange="rayTracer.updateMaterialColor(this.value)">
+                    </div>
+                    <div class="control-group">
+                        <label>Metallic</label>
+                        <input type="range" min="0" max="1" step="0.1" value="${obj.material.metallic}" onchange="rayTracer.updateObjectProperty('material.metallic', null, this.value)">
+                    </div>
+                    <div class="control-group">
+                        <label>Roughness</label>
+                        <input type="range" min="0" max="1" step="0.1" value="${obj.material.roughness}" onchange="rayTracer.updateObjectProperty('material.roughness', null, this.value)">
+                    </div>
+                    <div class="control-group">
+                        <label>Emission</label>
+                        <input type="range" min="0" max="5" step="0.1" value="${obj.material.emission}" onchange="rayTracer.updateObjectProperty('material.emission', null, this.value)">
+                    </div>
+                    <div class="control-group">
+                        <label>Transparency</label>
+                        <input type="range" min="0" max="1" step="0.1" value="${obj.material.transparency}" onchange="rayTracer.updateObjectProperty('material.transparency', null, this.value)">
+                    </div>
+                `;
+
+                container.innerHTML = html;
+            }
+
+            updateObjectProperty(property, index, value) {
+                if (!this.selectedObject) return;
+
+                const { type, index: objIndex } = this.selectedObject;
+                const obj = this.objects[type + 's'][objIndex];
+
+                const props = property.split('.');
+                let target = obj;
+
+                for (let i = 0; i < props.length - 1; i++) {
+                    target = target[props[i]];
+                }
+
+                const finalProp = props[props.length - 1];
+
+                if (index !== null) {
+                    target[finalProp][index] = parseFloat(value);
+                } else {
+                    target[finalProp] = parseFloat(value);
+                }
+
+                this.resetAccumulation();
+            }
+
+            updateMaterialColor(hex) {
+                if (!this.selectedObject) return;
+
+                const { type, index: objIndex } = this.selectedObject;
+                const obj = this.objects[type + 's'][objIndex];
+
+                const color = this.hexToRgb(hex);
+                obj.material.albedo = [color.r / 255, color.g / 255, color.b / 255];
+
+                this.resetAccumulation();
+            }
+
+            addObject(type) {
+                const newObject = {
+                    sphere: () => ({
+                        center: [Math.random() * 4 - 2, Math.random() * 2, Math.random() * 4 - 2],
+                        radius: 0.5 + Math.random() * 0.5,
+                        material: {
+                            albedo: [Math.random(), Math.random(), Math.random()],
+                            metallic: Math.random(),
+                            roughness: Math.random(),
+                            emission: 0.0,
+                            transparency: 0.0,
+                            ior: 1.5
+                        }
+                    }),
+                    plane: () => ({
+                        point: [0, Math.random() * 4 - 2, 0],
+                        normal: [0, 1, 0],
+                        material: {
+                            albedo: [Math.random(), Math.random(), Math.random()],
+                            metallic: 0.0,
+                            roughness: 0.8,
+                            emission: 0.0,
+                            transparency: 0.0,
+                            ior: 1.5
+                        }
+                    }),
+                    box: () => ({
+                        center: [Math.random() * 4 - 2, Math.random() * 2, Math.random() * 4 - 2],
+                        size: [0.5 + Math.random(), 0.5 + Math.random(), 0.5 + Math.random()],
+                        material: {
+                            albedo: [Math.random(), Math.random(), Math.random()],
+                            metallic: Math.random(),
+                            roughness: Math.random(),
+                            emission: 0.0,
+                            transparency: 0.0,
+                            ior: 1.5
+                        }
+                    })
+                };
+
+                this.objects[type + 's'].push(newObject[type]());
+                this.updateObjectList();
+                this.resetAccumulation();
+            }
+
+            deleteObject(type, index) {
+                this.objects[type + 's'].splice(index, 1);
+                this.selectedObject = null;
+                this.updateObjectList();
+                this.updateObjectProperties();
+                this.resetAccumulation();
+            }
+
+            addLight(type) {
+                const newLight = {
+                    point: () => ({
+                        position: [Math.random() * 10 - 5, 2 + Math.random() * 3, Math.random() * 10 - 5],
+                        color: [1.0, 1.0, 1.0],
+                        intensity: 5.0 + Math.random() * 10.0,
+                        type: 0
+                    }),
+                    directional: () => ({
+                        position: [Math.random() - 0.5, 1.0, Math.random() - 0.5],
+                        color: [1.0, 0.9, 0.8],
+                        intensity: 1.0 + Math.random() * 2.0,
+                        type: 1
+                    })
+                };
+
+                if (this.lights.length < 4) {
+                    this.lights.push(newLight[type]());
+                    this.resetAccumulation();
+                }
+            }
+
+            resetAccumulation() {
+                this.frameCount = 0;
+            }
+
+            resetCamera() {
+                this.camera.position = [0, 2, 8];
+                this.camera.target = [0, 0, 0];
+                this.resetAccumulation();
+            }
+
+            render() {
+                const gl = this.gl;
+
+                gl.useProgram(this.program);
+
+                // Debug logging (only log occasionally to avoid spam)
+                if (this.frameCount % 60 === 0) {
+                    console.log(`Frame ${this.frameCount}: Spheres=${this.objects.spheres.length}, Planes=${this.objects.planes.length}, Lights=${this.lights.length}`);
+                }
+
+                // Bind vertex buffer
+                const positionLocation = gl.getAttribLocation(this.program, 'a_position');
+                gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+                gl.enableVertexAttribArray(positionLocation);
+                gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+                // Set uniforms
+                gl.uniform2f(this.uniforms.u_resolution, this.canvas.width, this.canvas.height);
+                gl.uniform1f(this.uniforms.u_time, performance.now() * 0.001);
+
+                // Camera uniforms
+                gl.uniform3fv(this.uniforms.u_cameraPos, this.camera.position);
+                gl.uniform3fv(this.uniforms.u_cameraTarget, this.camera.target);
+                gl.uniform3fv(this.uniforms.u_cameraUp, this.camera.up);
+                gl.uniform1f(this.uniforms.u_fov, this.camera.fov);
+                gl.uniform1f(this.uniforms.u_exposure, this.camera.exposure);
+                gl.uniform1f(this.uniforms.u_focusDistance, this.camera.focusDistance);
+                gl.uniform1f(this.uniforms.u_aperture, this.camera.aperture);
+
+                // Render settings
+                gl.uniform1i(this.uniforms.u_maxBounces, this.renderSettings.maxBounces);
+                gl.uniform1i(this.uniforms.u_samples, this.renderSettings.samples);
+                gl.uniform1f(this.uniforms.u_ambient, this.renderSettings.ambient);
+                gl.uniform1f(this.uniforms.u_globalIllumination, this.renderSettings.globalIllumination);
+
+                // Environment
+                gl.uniform3fv(this.uniforms.u_skyColor, this.environment.skyColor);
+                gl.uniform3fv(this.uniforms.u_horizonColor, this.environment.horizonColor);
+                gl.uniform3fv(this.uniforms.u_groundColor, this.environment.groundColor);
+
+                // Post-processing
+                gl.uniform1f(this.uniforms.u_gamma, this.postProcessing.gamma);
+                gl.uniform1f(this.uniforms.u_saturation, this.postProcessing.saturation);
+                gl.uniform1f(this.uniforms.u_contrast, this.postProcessing.contrast);
+                gl.uniform1f(this.uniforms.u_vignette, this.postProcessing.vignette);
+                gl.uniform1i(this.uniforms.u_toneMapping, this.postProcessing.toneMapping);
+
+                // Accumulation
+                gl.uniform1i(this.uniforms.u_frameCount, this.frameCount);
+                gl.uniform1i(this.uniforms.u_accumulation, this.renderSettings.accumulation ? 1 : 0);
+                gl.uniform1i(this.uniforms.u_denoising, this.renderSettings.denoising ? 1 : 0);
+
+                // Scene object counts
+                gl.uniform1i(this.uniforms.u_numSpheres, this.objects.spheres.length);
+                gl.uniform1i(this.uniforms.u_numPlanes, this.objects.planes.length);
+                gl.uniform1i(this.uniforms.u_numBoxes, this.objects.boxes.length);
+                gl.uniform1i(this.uniforms.u_numLights, this.lights.length);
+
+                // Pass sphere data
+                for (let i = 0; i < Math.min(this.objects.spheres.length, 8); i++) {
+                    const sphere = this.objects.spheres[i];
+                    const sphereData = [...sphere.center, sphere.radius];
+                    const materialData1 = [...sphere.material.albedo, sphere.material.metallic];
+                    const materialData2 = [sphere.material.roughness, sphere.material.emission, sphere.material.transparency, sphere.material.ior];
+
+                    gl.uniform4f(gl.getUniformLocation(this.program, `u_spheres[${i}]`), ...sphereData);
+                    gl.uniform4f(gl.getUniformLocation(this.program, `u_sphereMaterials[${i * 2}]`), ...materialData1);
+                    gl.uniform4f(gl.getUniformLocation(this.program, `u_sphereMaterials[${i * 2 + 1}]`), ...materialData2);
+                }
+
+                // Pass plane data
+                for (let i = 0; i < Math.min(this.objects.planes.length, 4); i++) {
+                    const plane = this.objects.planes[i];
+                    const planeData = [...plane.point, plane.normal[0]];
+                    const normalData = [plane.normal[1], plane.normal[2], 0.0, 0.0];
+                    const materialData1 = [...plane.material.albedo, plane.material.metallic];
+                    const materialData2 = [plane.material.roughness, plane.material.emission, plane.material.transparency, plane.material.ior];
+
+                    gl.uniform4f(gl.getUniformLocation(this.program, `u_planes[${i}]`), ...planeData);
+                    gl.uniform4f(gl.getUniformLocation(this.program, `u_planeNormals[${i}]`), ...normalData);
+                    gl.uniform4f(gl.getUniformLocation(this.program, `u_planeMaterials[${i * 2}]`), ...materialData1);
+                    gl.uniform4f(gl.getUniformLocation(this.program, `u_planeMaterials[${i * 2 + 1}]`), ...materialData2);
+                }
+
+                // Pass light data
+                for (let i = 0; i < Math.min(this.lights.length, 4); i++) {
+                    const light = this.lights[i];
+                    gl.uniform3f(gl.getUniformLocation(this.program, `u_lightPositions[${i}]`), ...light.position);
+                    gl.uniform3f(gl.getUniformLocation(this.program, `u_lightColors[${i}]`), ...light.color);
+                    gl.uniform2f(gl.getUniformLocation(this.program, `u_lightData[${i}]`), light.intensity, light.type);
+                }
+
+                // Render directly to screen (no framebuffer for now)
+                gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+                gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+                gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+                this.frameCount++;
+            }
+
+            animate() {
+                this.render();
+                this.updateStats();
+                requestAnimationFrame(() => this.animate());
+            }
+
+            // Utility functions
+            hexToRgb(hex) {
+                const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+                return result ? {
+                    r: parseInt(result[1], 16),
+                    g: parseInt(result[2], 16),
+                    b: parseInt(result[3], 16)
+                } : null;
+            }
+
+            rgbToHex(rgb) {
+                const toHex = (c) => {
+                    const hex = Math.round(c * 255).toString(16);
+                    return hex.length === 1 ? "0" + hex : hex;
+                };
+                return "#" + toHex(rgb[0]) + toHex(rgb[1]) + toHex(rgb[2]);
+            }
+
+            subtract(a, b) {
+                return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+            }
+
+            length(v) {
+                return Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+            }
+
+            normalize(v) {
+                const len = this.length(v);
+                return len > 0 ? [v[0] / len, v[1] / len, v[2] / len] : [0, 0, 0];
+            }
+        }
+
+        // UI Functions
+        function toggleSection(header) {
+            const content = header.nextElementSibling;
+            const arrow = header.querySelector('.toggle-arrow');
+
+            content.classList.toggle('expanded');
+            arrow.classList.toggle('expanded');
+        }
+
+        function switchTab(tab, contentId) {
+            // Remove active class from all tabs and contents
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+            // Add active class to clicked tab and corresponding content
+            tab.classList.add('active');
+            document.getElementById(contentId).classList.add('active');
+        }
+
+        function addObject(type) {
+            rayTracer.addObject(type);
+        }
+
+        function addLight(type) {
+            rayTracer.addLight(type);
+        }
+
+        function resetCamera() {
+            rayTracer.resetCamera();
+        }
+
+        function resetAccumulation() {
+            rayTracer.resetAccumulation();
+        }
+
+        // Initialize the ray tracer
+        let rayTracer;
+
+        window.addEventListener('load', () => {
+            // Check WebGL support before attempting to create the ray tracer
+            const canvas = document.createElement('canvas');
+            const gl = canvas.getContext('webgl2') ||
+                      canvas.getContext('webgl') ||
+                      canvas.getContext('experimental-webgl');
+
+            if (!gl) {
+                console.error('WebGL not supported');
+                document.body.innerHTML = `
+                    <div style="padding: 20px; color: white; background: #1a1a1a; text-align: center; height: 100vh; display: flex; flex-direction: column; justify-content: center;">
+                        <h2>WebGL Not Supported</h2>
+                        <p>Your browser or hardware does not support WebGL.</p>
+                        <p><strong>Solutions:</strong></p>
+                        <ul style="text-align: left; max-width: 500px; margin: 20px auto;">
+                            <li>Enable hardware acceleration in Chrome: chrome://settings → Advanced → System → "Use hardware acceleration when available"</li>
+                            <li>Update your graphics drivers</li>
+                            <li>Try a different browser (Chrome, Firefox, Edge)</li>
+                            <li>Check if WebGL is blocked: Visit <a href="https://get.webgl.org/" target="_blank" style="color: #4a90e2;">get.webgl.org</a></li>
+                        </ul>
+                        <button onclick="window.location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #4a90e2; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                            Retry
+                        </button>
+                    </div>
+                `;
+                return;
+            }
+
+            try {
+                console.log('Initializing Advanced Ray Tracer...');
+                rayTracer = new AdvancedRayTracer();
+
+                // Expand first sections by default
+                const firstSections = document.querySelectorAll('.section-content');
+                if (firstSections.length >= 2) {
+                    firstSections[0].classList.add('expanded');
+                    firstSections[1].classList.add('expanded');
+                }
+
+                console.log('Ray tracer initialized successfully!');
+            } catch (error) {
+                console.error('Failed to initialize ray tracer:', error);
+
+                // More detailed error message
+                let errorDetails = error.message;
+                if (error.message.includes('shader')) {
+                    errorDetails += ' - Your graphics card may not support the required shader features.';
+                }
+
+                document.body.innerHTML = `
+                    <div style="padding: 20px; color: white; background: #1a1a1a; text-align: center; height: 100vh; display: flex; flex-direction: column; justify-content: center;">
+                        <h2>Ray Tracer Initialization Failed</h2>
+                        <p><strong>Error:</strong> ${errorDetails}</p>
+                        <p>This could be due to:</p>
+                        <ul style="text-align: left; max-width: 500px; margin: 20px auto;">
+                            <li>Insufficient graphics card capabilities</li>
+                            <li>Outdated graphics drivers</li>
+                            <li>Browser security restrictions</li>
+                            <li>Hardware acceleration disabled</li>
+                        </ul>
+                        <div style="margin-top: 20px;">
+                            <button onclick="window.location.reload()" style="margin-right: 10px; padding: 10px 20px; background: #4a90e2; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                                Retry
+                            </button>
+                            <button onclick="window.open('raytracer.html', '_blank')" style="padding: 10px 20px; background: #666; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                                Try Simple Version
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bulletproof GPU Ray Tracer</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #0a0a0a;
+            color: #fff;
+            font-family: 'Segoe UI', sans-serif;
+            overflow: hidden;
+        }
+
+        .main-container {
+            display: flex;
+            height: 100vh;
+        }
+
+        .viewport {
+            flex: 1;
+            position: relative;
+            background: #000;
+        }
+
+        #canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            cursor: grab;
+        }
+
+        .overlay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 13px;
+            z-index: 100;
+            min-width: 200px;
+        }
+
+        .side-panel {
+            width: 300px;
+            background: #1a1a1a;
+            border-left: 1px solid #333;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .control-group {
+            margin-bottom: 20px;
+        }
+
+        .control-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: #ccc;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: #333;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #4a90e2;
+            cursor: pointer;
+        }
+
+        button {
+            background: #4a90e2;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 5px 5px 5px 0;
+        }
+
+        button:hover {
+            background: #357abd;
+        }
+
+        .value-display {
+            float: right;
+            color: #4a90e2;
+            font-weight: 600;
+        }
+
+        .error-container {
+            padding: 40px;
+            color: white;
+            background: #1a1a1a;
+            text-align: center;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .debug-info {
+            background: #333;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px auto;
+            max-width: 800px;
+            text-align: left;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <div class="viewport">
+            <canvas id="canvas"></canvas>
+            <div class="overlay">
+                <div><strong>🚀 GPU Ray Tracer</strong></div>
+                <div>FPS: <span id="fps">--</span></div>
+                <div>GPU Load: <span id="gpuLoad">--</span>%</div>
+                <div>Rays/Frame: <span id="rayCount">--</span>M</div>
+                <div>Status: <span id="status">Loading...</span></div>
+            </div>
+        </div>
+
+        <div class="side-panel">
+            <h3>Performance Controls</h3>
+
+            <div class="control-group">
+                <label>Resolution: <span class="value-display" id="resValue">1.0x</span></label>
+                <input type="range" id="resolution" min="0.5" max="2.0" step="0.25" value="1.0">
+            </div>
+
+            <div class="control-group">
+                <label>Samples: <span class="value-display" id="samplesValue">4</span></label>
+                <input type="range" id="samples" min="1" max="16" step="1" value="4">
+            </div>
+
+            <div class="control-group">
+                <label>Ray Bounces: <span class="value-display" id="bouncesValue">6</span></label>
+                <input type="range" id="bounces" min="2" max="12" value="6">
+            </div>
+
+            <div class="control-group">
+                <label>Animation Speed: <span class="value-display" id="animValue">1.0x</span></label>
+                <input type="range" id="animSpeed" min="0" max="3" step="0.1" value="1.0">
+            </div>
+
+            <button onclick="setQuality('low')">Low Quality</button>
+            <button onclick="setQuality('medium')">Medium</button>
+            <button onclick="setQuality('high')">High Quality</button>
+            <button onclick="setQuality('ultra')">🔥 Ultra</button>
+
+            <div style="margin-top: 20px;">
+                <button onclick="toggleAnimation()">Toggle Animation</button>
+                <button onclick="resetCamera()">Reset Camera</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Bulletproof shader sources stored as strings
+        const VERTEX_SHADER_SOURCE = `
+attribute vec2 a_position;
+void main() {
+    gl_Position = vec4(a_position, 0.0, 1.0);
+}`;
+
+        const FRAGMENT_SHADER_SOURCE = `
+precision highp float;
+
+uniform vec2 u_resolution;
+uniform float u_time;
+uniform vec3 u_camera;
+uniform int u_samples;
+uniform int u_bounces;
+uniform float u_resolution_scale;
+uniform float u_anim_speed;
+uniform int u_enable_animation;
+
+float hash(float n) {
+    return fract(sin(n) * 43758.5453123);
+}
+
+float noise(vec2 x) {
+    vec2 p = floor(x);
+    vec2 f = fract(x);
+    f = f * f * (3.0 - 2.0 * f);
+    float n = p.x + p.y * 57.0;
+    return mix(mix(hash(n), hash(n + 1.0), f.x),
+              mix(hash(n + 57.0), hash(n + 58.0), f.x), f.y);
+}
+
+struct Ray {
+    vec3 origin;
+    vec3 direction;
+};
+
+struct Hit {
+    bool hit;
+    float t;
+    vec3 point;
+    vec3 normal;
+    vec3 color;
+    float metallic;
+};
+
+Hit intersectSphere(Ray ray, vec3 center, float radius, vec3 color, float metallic) {
+    Hit h;
+    h.hit = false;
+
+    vec3 oc = ray.origin - center;
+    float a = dot(ray.direction, ray.direction);
+    float b = 2.0 * dot(oc, ray.direction);
+    float c = dot(oc, oc) - radius * radius;
+    float discriminant = b * b - 4.0 * a * c;
+
+    if (discriminant >= 0.0) {
+        float t1 = (-b - sqrt(discriminant)) / (2.0 * a);
+        float t2 = (-b + sqrt(discriminant)) / (2.0 * a);
+        float t = t1 > 0.001 ? t1 : (t2 > 0.001 ? t2 : -1.0);
+
+        if (t > 0.001) {
+            h.hit = true;
+            h.t = t;
+            h.point = ray.origin + t * ray.direction;
+            h.normal = normalize(h.point - center);
+            h.color = color;
+            h.metallic = metallic;
+        }
+    }
+
+    return h;
+}
+
+Hit intersectPlane(Ray ray, vec3 point, vec3 normal) {
+    Hit h;
+    h.hit = false;
+
+    float denom = dot(normal, ray.direction);
+    if (abs(denom) > 1e-6) {
+        float t = dot(point - ray.origin, normal) / denom;
+        if (t > 0.001) {
+            h.hit = true;
+            h.t = t;
+            h.point = ray.origin + t * ray.direction;
+            h.normal = normal;
+
+            vec2 uv = h.point.xz * 0.5;
+            float checker = step(0.5, mod(floor(uv.x) + floor(uv.y), 2.0));
+            h.color = mix(vec3(0.2), vec3(0.8), checker);
+            h.metallic = 0.1;
+        }
+    }
+
+    return h;
+}
+
+Hit intersectScene(Ray ray) {
+    Hit closest;
+    closest.hit = false;
+    closest.t = 1e20;
+
+    vec3 spherePositions[4];
+    vec3 sphereColors[4];
+    float sphereMetallic[4];
+
+    if (u_enable_animation == 1) {
+        float t = u_time * u_anim_speed;
+        spherePositions[0] = vec3(-2.0 + sin(t) * 0.5, 1.0 + cos(t * 1.3) * 0.3, -5.0);
+        spherePositions[1] = vec3(2.0 + cos(t * 0.8) * 0.7, 1.0 + sin(t * 1.1) * 0.4, -5.0);
+        spherePositions[2] = vec3(0.0, 3.0 + sin(t * 2.0) * 0.5, -3.0);
+        spherePositions[3] = vec3(sin(t + 3.14) * 3.0, 0.5, -7.0 + cos(t + 3.14) * 2.0);
+    } else {
+        spherePositions[0] = vec3(-2.0, 1.0, -5.0);
+        spherePositions[1] = vec3(2.0, 1.0, -5.0);
+        spherePositions[2] = vec3(0.0, 3.0, -3.0);
+        spherePositions[3] = vec3(0.0, 0.5, -7.0);
+    }
+
+    sphereColors[0] = vec3(0.9, 0.1, 0.1);
+    sphereColors[1] = vec3(0.1, 0.9, 0.1);
+    sphereColors[2] = vec3(0.9, 0.5, 0.1);
+    sphereColors[3] = vec3(0.1, 0.5, 0.9);
+
+    sphereMetallic[0] = 0.9;
+    sphereMetallic[1] = 0.0;
+    sphereMetallic[2] = 0.2;
+    sphereMetallic[3] = 0.8;
+
+    for (int i = 0; i < 4; i++) {
+        Hit h = intersectSphere(ray, spherePositions[i], 1.0, sphereColors[i], sphereMetallic[i]);
+        if (h.hit && h.t < closest.t) {
+            closest = h;
+        }
+    }
+
+    Hit ground = intersectPlane(ray, vec3(0, -2, 0), vec3(0, 1, 0));
+    if (ground.hit && ground.t < closest.t) {
+        closest = ground;
+    }
+
+    return closest;
+}
+
+vec3 sampleEnvironment(vec3 direction) {
+    float t = 0.5 * (direction.y + 1.0);
+    vec3 sky = mix(vec3(0.1, 0.1, 0.3), vec3(0.5, 0.7, 1.0), t);
+
+    if (direction.y > 0.0) {
+        vec2 uv = direction.xz / direction.y;
+        float stars = step(0.98, noise(uv * 20.0 + u_time * 0.1));
+        sky += vec3(stars * 0.3);
+    }
+
+    return sky;
+}
+
+vec3 calculateLighting(Hit hit, vec3 viewDir) {
+    vec3 color = vec3(0.0);
+
+    vec3 lightPos = vec3(5.0, 8.0, 5.0);
+    if (u_enable_animation == 1) {
+        float t = u_time * u_anim_speed;
+        lightPos = vec3(5.0 + 3.0 * sin(t * 0.7), 8.0, 5.0 + 3.0 * cos(t * 0.7));
+    }
+
+    vec3 lightDir = lightPos - hit.point;
+    float distance = length(lightDir);
+    lightDir = normalize(lightDir);
+
+    Ray shadowRay;
+    shadowRay.origin = hit.point + hit.normal * 0.001;
+    shadowRay.direction = lightDir;
+    Hit shadowHit = intersectScene(shadowRay);
+
+    bool inShadow = shadowHit.hit && shadowHit.t < distance;
+
+    if (!inShadow) {
+        float attenuation = 15.0 / (1.0 + 0.1 * distance);
+        float lambertian = max(0.0, dot(hit.normal, lightDir));
+        color += hit.color * lambertian * attenuation;
+
+        vec3 reflectDir = reflect(-lightDir, hit.normal);
+        float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32.0);
+        color += vec3(1.0) * spec * attenuation * 0.3;
+    }
+
+    color += hit.color * 0.1;
+
+    return color;
+}
+
+vec3 trace(Ray ray) {
+    vec3 color = vec3(0.0);
+    vec3 throughput = vec3(1.0);
+
+    for (int bounce = 0; bounce < 12; bounce++) {
+        if (bounce >= u_bounces) break;
+
+        Hit hit = intersectScene(ray);
+
+        if (!hit.hit) {
+            color += throughput * sampleEnvironment(ray.direction);
+            break;
+        }
+
+        vec3 viewDir = -ray.direction;
+        vec3 lighting = calculateLighting(hit, viewDir);
+        color += throughput * lighting;
+
+        if (hit.metallic > 0.1) {
+            vec3 reflectDir = reflect(ray.direction, hit.normal);
+            ray.origin = hit.point + hit.normal * 0.001;
+            ray.direction = reflectDir;
+            throughput *= hit.color * hit.metallic;
+        } else {
+            break;
+        }
+
+        float maxComponent = max(max(throughput.r, throughput.g), throughput.b);
+        if (maxComponent < 0.1) break;
+    }
+
+    return color;
+}
+
+void main() {
+    vec2 coord = gl_FragCoord.xy * u_resolution_scale;
+    vec2 screenPos = (coord / u_resolution) * 2.0 - 1.0;
+    screenPos.x *= u_resolution.x / u_resolution.y;
+
+    vec3 color = vec3(0.0);
+    vec3 rayOrigin = u_camera;
+
+    for (int sample = 0; sample < 16; sample++) {
+        if (sample >= u_samples) break;
+
+        vec2 jitter = vec2(hash(coord.x + float(sample)), hash(coord.y + float(sample))) - 0.5;
+        jitter /= u_resolution;
+        vec2 samplePos = screenPos + jitter;
+
+        vec3 rayDir = normalize(vec3(samplePos, -1.0));
+
+        Ray ray;
+        ray.origin = rayOrigin;
+        ray.direction = rayDir;
+
+        color += trace(ray);
+    }
+
+    color /= float(u_samples);
+    color = color / (1.0 + color);
+    color = pow(color, vec3(1.0 / 2.2));
+
+    gl_FragColor = vec4(color, 1.0);
+}`;
+
+        class BulletproofRayTracer {
+            constructor() {
+                this.canvas = document.getElementById('canvas');
+                this.debug = [];
+
+                try {
+                    this.log('Starting ray tracer initialization...');
+                    this.resizeCanvas();
+                    this.initWebGL();
+                    this.createShaders();
+                    this.setupScene();
+                    this.setupControls();
+                    this.setupStats();
+                    this.setupMouseControls();
+                    this.log('✅ Ray tracer initialized successfully!');
+                    document.getElementById('status').textContent = 'Running';
+                    this.animate();
+                } catch (error) {
+                    this.showError(error);
+                }
+            }
+
+            log(message) {
+                console.log(message);
+                this.debug.push(message);
+            }
+
+            showError(error) {
+                console.error('Ray tracer error:', error);
+
+                const debugInfo = [
+                    'Debug Information:',
+                    '==================',
+                    `Browser: ${navigator.userAgent}`,
+                    `WebGL Support: ${this.gl ? 'Yes' : 'No'}`,
+                    `Canvas Size: ${this.canvas.width}x${this.canvas.height}`,
+                    '',
+                    'Initialization Log:',
+                    ...this.debug,
+                    '',
+                    `Error: ${error.message}`,
+                    `Stack: ${error.stack || 'No stack trace'}`
+                ].join('\n');
+
+                document.body.innerHTML = `
+                    <div class="error-container">
+                        <h2>🚨 Ray Tracer Failed to Initialize</h2>
+                        <p style="color: #ff6b6b; margin: 20px 0;"><strong>Error:</strong> ${error.message}</p>
+
+                        <div class="debug-info">${debugInfo}</div>
+
+                        <div style="margin-top: 30px;">
+                            <h3>Troubleshooting Steps:</h3>
+                            <ul style="text-align: left; margin: 20px auto; max-width: 600px;">
+                                <li>✅ Enable hardware acceleration in browser settings</li>
+                                <li>🔄 Update your graphics drivers</li>
+                                <li>🌐 Try Chrome, Firefox, or Edge</li>
+                                <li>🖥️ Test WebGL at <a href="https://get.webgl.org/" target="_blank" style="color: #4a90e2;">get.webgl.org</a></li>
+                                <li>💻 Restart your browser completely</li>
+                            </ul>
+                        </div>
+
+                        <button onclick="window.location.reload()" style="margin-top: 20px; padding: 15px 30px; background: #4a90e2; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px;">
+                            🔄 Try Again
+                        </button>
+                    </div>
+                `;
+            }
+
+            resizeCanvas() {
+                const rect = this.canvas.parentElement.getBoundingClientRect();
+                this.canvas.width = rect.width;
+                this.canvas.height = rect.height;
+                this.log(`Canvas resized to ${this.canvas.width}x${this.canvas.height}`);
+            }
+
+            initWebGL() {
+                this.gl = this.canvas.getContext('webgl2') || this.canvas.getContext('webgl');
+                if (!this.gl) {
+                    throw new Error('WebGL not supported by this browser/device');
+                }
+
+                this.log(`WebGL initialized: ${this.gl.getParameter(this.gl.VERSION)}`);
+                this.log(`Renderer: ${this.gl.getParameter(this.gl.RENDERER)}`);
+            }
+
+            createShaders() {
+                this.log('Creating shaders...');
+
+                // Validate shader sources
+                if (!VERTEX_SHADER_SOURCE || VERTEX_SHADER_SOURCE.trim() === '') {
+                    throw new Error('Vertex shader source is empty or undefined');
+                }
+
+                if (!FRAGMENT_SHADER_SOURCE || FRAGMENT_SHADER_SOURCE.trim() === '') {
+                    throw new Error('Fragment shader source is empty or undefined');
+                }
+
+                this.log(`Vertex shader length: ${VERTEX_SHADER_SOURCE.length} characters`);
+                this.log(`Fragment shader length: ${FRAGMENT_SHADER_SOURCE.length} characters`);
+
+                try {
+                    this.program = this.createProgram(VERTEX_SHADER_SOURCE, FRAGMENT_SHADER_SOURCE);
+                    this.log('✅ Shaders compiled and linked successfully');
+                } catch (error) {
+                    this.log(`❌ Shader error: ${error.message}`);
+                    throw error;
+                }
+
+                this.getUniforms();
+                this.createGeometry();
+            }
+
+            createProgram(vertexSource, fragmentSource) {
+                const gl = this.gl;
+
+                this.log('Compiling vertex shader...');
+                const vertexShader = this.compileShader(gl.VERTEX_SHADER, vertexSource);
+
+                this.log('Compiling fragment shader...');
+                const fragmentShader = this.compileShader(gl.FRAGMENT_SHADER, fragmentSource);
+
+                this.log('Linking program...');
+                const program = gl.createProgram();
+                gl.attachShader(program, vertexShader);
+                gl.attachShader(program, fragmentShader);
+                gl.linkProgram(program);
+
+                if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                    const error = gl.getProgramInfoLog(program);
+                    gl.deleteProgram(program);
+                    throw new Error(`Program link failed: ${error}`);
+                }
+
+                this.log('✅ Program linked successfully');
+                return program;
+            }
+
+            compileShader(type, source) {
+                const gl = this.gl;
+
+                if (!source || typeof source !== 'string') {
+                    throw new Error(`Invalid shader source: ${source}`);
+                }
+
+                const shader = gl.createShader(type);
+                const typeName = type === gl.VERTEX_SHADER ? 'vertex' : 'fragment';
+
+                gl.shaderSource(shader, source);
+                gl.compileShader(shader);
+
+                if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                    const error = gl.getShaderInfoLog(shader);
+                    gl.deleteShader(shader);
+                    throw new Error(`${typeName} shader compilation failed: ${error}`);
+                }
+
+                this.log(`✅ ${typeName} shader compiled successfully`);
+                return shader;
+            }
+
+            getUniforms() {
+                const gl = this.gl;
+                this.uniforms = {};
+
+                const names = [
+                    'u_resolution', 'u_time', 'u_camera', 'u_samples', 'u_bounces',
+                    'u_resolution_scale', 'u_anim_speed', 'u_enable_animation'
+                ];
+
+                names.forEach(name => {
+                    this.uniforms[name] = gl.getUniformLocation(this.program, name);
+                    if (this.uniforms[name] === null) {
+                        this.log(`⚠️ Uniform ${name} not found`);
+                    }
+                });
+
+                this.log(`Found ${Object.keys(this.uniforms).length} uniforms`);
+            }
+
+            createGeometry() {
+                const gl = this.gl;
+
+                const vertices = new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]);
+
+                this.vertexBuffer = gl.createBuffer();
+                gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+                gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+                this.log('✅ Geometry created');
+            }
+
+            setupScene() {
+                this.camera = [0, 2, 8];
+                this.settings = {
+                    resolution: 1.0,
+                    samples: 4,
+                    bounces: 6,
+                    animSpeed: 1.0,
+                    enableAnimation: true
+                };
+                this.log('Scene initialized');
+            }
+
+            setupMouseControls() {
+                let isMouseDown = false;
+                let lastMouseX = 0;
+                let lastMouseY = 0;
+                let cameraAngleX = 0;
+                let cameraAngleY = 0;
+
+                this.canvas.addEventListener('mousedown', (e) => {
+                    isMouseDown = true;
+                    lastMouseX = e.clientX;
+                    lastMouseY = e.clientY;
+                });
+
+                this.canvas.addEventListener('mousemove', (e) => {
+                    if (!isMouseDown) return;
+
+                    const deltaX = e.clientX - lastMouseX;
+                    const deltaY = e.clientY - lastMouseY;
+
+                    cameraAngleY += deltaX * 0.01;
+                    cameraAngleX += deltaY * 0.01;
+                    cameraAngleX = Math.max(-Math.PI/2, Math.min(Math.PI/2, cameraAngleX));
+
+                    const radius = 10;
+                    this.camera = [
+                        radius * Math.sin(cameraAngleY) * Math.cos(cameraAngleX),
+                        2 + radius * Math.sin(cameraAngleX),
+                        radius * Math.cos(cameraAngleY) * Math.cos(cameraAngleX)
+                    ];
+
+                    lastMouseX = e.clientX;
+                    lastMouseY = e.clientY;
+                });
+
+                this.canvas.addEventListener('mouseup', () => { isMouseDown = false; });
+                this.canvas.addEventListener('mouseleave', () => { isMouseDown = false; });
+            }
+
+            setupControls() {
+                // Quality presets
+                window.setQuality = (preset) => {
+                    switch(preset) {
+                        case 'low':
+                            this.updateSetting('resolution', 0.75);
+                            this.updateSetting('samples', 2);
+                            this.updateSetting('bounces', 4);
+                            break;
+                        case 'medium':
+                            this.updateSetting('resolution', 1.0);
+                            this.updateSetting('samples', 4);
+                            this.updateSetting('bounces', 6);
+                            break;
+                        case 'high':
+                            this.updateSetting('resolution', 1.25);
+                            this.updateSetting('samples', 8);
+                            this.updateSetting('bounces', 8);
+                            break;
+                        case 'ultra':
+                            this.updateSetting('resolution', 1.5);
+                            this.updateSetting('samples', 12);
+                            this.updateSetting('bounces', 10);
+                            break;
+                    }
+                };
+
+                window.toggleAnimation = () => {
+                    this.settings.enableAnimation = !this.settings.enableAnimation;
+                };
+
+                window.resetCamera = () => {
+                    this.camera = [0, 2, 8];
+                };
+
+                // Setup sliders
+                this.setupSlider('resolution', (v) => `${v}x`);
+                this.setupSlider('samples', (v) => v);
+                this.setupSlider('bounces', (v) => v);
+                this.setupSlider('animSpeed', (v) => `${v}x`);
+            }
+
+            setupSlider(id, formatter) {
+                const slider = document.getElementById(id);
+                const display = document.getElementById(id + 'Value');
+
+                if (slider && display) {
+                    slider.addEventListener('input', (e) => {
+                        const value = parseFloat(e.target.value);
+                        this.settings[id] = value;
+                        display.textContent = formatter ? formatter(value) : value;
+                    });
+                }
+            }
+
+            updateSetting(key, value) {
+                this.settings[key] = value;
+                const slider = document.getElementById(key);
+                const display = document.getElementById(key + 'Value');
+                if (slider) slider.value = value;
+                if (display) {
+                    const formatters = {
+                        resolution: (v) => `${v}x`,
+                        samples: (v) => v,
+                        bounces: (v) => v
+                    };
+                    display.textContent = formatters[key] ? formatters[key](value) : value;
+                }
+            }
+
+            setupStats() {
+                this.fpsHistory = new Array(60).fill(0);
+                this.fpsIndex = 0;
+                this.lastTime = performance.now();
+            }
+
+            updateStats() {
+                const now = performance.now();
+                const frameTime = now - this.lastTime;
+                this.lastTime = now;
+
+                this.fpsHistory[this.fpsIndex] = 1000 / frameTime;
+                this.fpsIndex = (this.fpsIndex + 1) % this.fpsHistory.length;
+
+                const fps = this.fpsHistory.reduce((a, b) => a + b) / this.fpsHistory.length;
+                const gpuLoad = Math.min(100, Math.max(0, 100 - fps * 1.67));
+
+                document.getElementById('fps').textContent = fps.toFixed(1);
+                document.getElementById('gpuLoad').textContent = gpuLoad.toFixed(0);
+                document.getElementById('rayCount').textContent = (this.canvas.width * this.canvas.height * this.settings.samples / 1000000).toFixed(1);
+            }
+
+            render() {
+                const gl = this.gl;
+
+                try {
+                    gl.useProgram(this.program);
+
+                    // Bind geometry
+                    const positionLocation = gl.getAttribLocation(this.program, 'a_position');
+                    gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+                    gl.enableVertexAttribArray(positionLocation);
+                    gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+                    // Set uniforms safely
+                    if (this.uniforms.u_resolution) gl.uniform2f(this.uniforms.u_resolution, this.canvas.width, this.canvas.height);
+                    if (this.uniforms.u_time) gl.uniform1f(this.uniforms.u_time, performance.now() * 0.001);
+                    if (this.uniforms.u_camera) gl.uniform3fv(this.uniforms.u_camera, this.camera);
+                    if (this.uniforms.u_samples) gl.uniform1i(this.uniforms.u_samples, this.settings.samples);
+                    if (this.uniforms.u_bounces) gl.uniform1i(this.uniforms.u_bounces, this.settings.bounces);
+                    if (this.uniforms.u_resolution_scale) gl.uniform1f(this.uniforms.u_resolution_scale, this.settings.resolution);
+                    if (this.uniforms.u_anim_speed) gl.uniform1f(this.uniforms.u_anim_speed, this.settings.animSpeed);
+                    if (this.uniforms.u_enable_animation) gl.uniform1i(this.uniforms.u_enable_animation, this.settings.enableAnimation ? 1 : 0);
+
+                    // Render
+                    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+                    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+                } catch (error) {
+                    console.error('Render error:', error);
+                    document.getElementById('status').textContent = 'Render Error';
+                }
+            }
+
+            animate() {
+                this.render();
+                this.updateStats();
+                requestAnimationFrame(() => this.animate());
+            }
+        }
+
+        // Initialize when page loads
+        window.addEventListener('load', () => {
+            new BulletproofRayTracer();
+        });
+    </script>
+</body>
+</html>
